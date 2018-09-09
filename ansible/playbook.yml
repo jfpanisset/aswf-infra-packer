@@ -1,0 +1,39 @@
+---
+
+- name: "Configure Docker server(s)"
+  hosts: "all"
+  become: True
+  become_method: sudo
+  remote_user: packer
+
+  vars:
+    pip_install_packages:
+      - name: docker
+
+  roles:
+    - geerlingguy.pip
+    - geerlingguy.docker
+
+  tasks:
+  - name: add Jenkins container
+    docker_container:
+      name: aswf_jenkins
+      image: jenkins/jenkins:lts
+      published_ports:
+        - 8080:8080
+        - 50000:50000
+
+  - name: add Nexus container
+    docker_container:
+     name: aswf_nexus
+     image: sonatype/nexus
+     published_ports:
+       - 8081:8081
+
+  - name: add Nexus3 container
+    docker_container:
+      name: aswf_nexus3
+      image: sonatype/nexus3
+      published_ports:
+        - 8082:8081
+
