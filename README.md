@@ -56,3 +56,25 @@ the [geerlingguy/ubuntu1804](https://github.com/geerlingguy/packer-ubuntu-1804) 
 significantly differently depending on whether the VM environment is configred for BIOS or UEFI, the
 [boot_command](https://www.packer.io/docs/builders/vmware-iso.html#boot_command) virtual keystrokes passed to the Ubuntu installer via VNC by
 Packer will only work in a BIOS environment.
+
+# Building the Infrastructure
+
+```
+packer build ubuntu_vmware.json
+```
+
+or if you are debugging and don't want to lose the VM you are building on an error:
+
+```
+packer build -on-error=abort ubuntu_vmware.json
+```
+
+If everything worked well, once you restart the completed VM, you should be able to access the services at:
+
+* [Jenkins](http://aswf-ubuntu.local:8080)
+* [Nexus](http://aswf-ubuntu.local:8081/nexus)
+* [Nexus3](http://aswf-ubuntu.local:8082)
+
+(the build process installs avahi-daemon which should add the hostname aswf-ubuntu to the .local mDNS domain).
+
+It can take a few minutes for the Nexus servers to fully initialize, before which they won't accept connections.

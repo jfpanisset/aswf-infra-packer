@@ -1,6 +1,6 @@
 {
   "variables" : {
-    "hostname": "aswf-ubuntu" 
+    "hostname": "aswf-ubuntu",
     "domainname": "panisset.io"
   },
   "builders": [

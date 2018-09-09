@@ -9,6 +9,7 @@
   vars:
     pip_install_packages:
       - name: docker
+    docker_users: ["packer"]
 
   roles:
     - geerlingguy.pip
@@ -22,6 +23,7 @@
       published_ports:
         - 8080:8080
         - 50000:50000
+      restart_policy: unless-stopped
 
   - name: add Nexus container
     docker_container:
@@ -29,6 +31,7 @@
      image: sonatype/nexus
      published_ports:
        - 8081:8081
+     restart_policy: unless-stopped
 
   - name: add Nexus3 container
     docker_container:
@@ -36,4 +39,5 @@
       image: sonatype/nexus3
       published_ports:
         - 8082:8081
+      restart_policy: unless-stopped
 
