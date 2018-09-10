@@ -76,10 +76,11 @@
       "type": "ansible",
       "playbook_file": "./ansible/playbook.yml",
       "user": "{{user `packer_username`}}",
+      "inventory_directory": "./ansible/inventory",
+      "inventory_file": "hosts.yml",
       "extra_arguments": [
-        "-i ./ansible/inventory/hosts.yml",
-        "-u {{user `packer_username`}}",
-        "-e ansible_become_pass={{user `packer_password`}}"
+        "--user", "{{user `packer_username`}}",
+        "--extra-vars", "ansible_become_pass={{user `packer_password`}}"
       ]
     }
   ]

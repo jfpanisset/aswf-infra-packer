@@ -74,11 +74,11 @@ as NGINX used to proxy / redirect access to the vhosts.
 # Building the Infrastructure
 
 ```
-packer build -var 'packer_username=MY_USERN' -var 'packer_password=MY_PASSW' ubuntu_vmware.json
+packer build -var packer_username=MY_USER -var packer_password=MY_PASS ubuntu_vmware.json
 ```
-If you are debugging and don't want to lose the VM you are building on an error:
+If you are debugging and don't want to lose the VM you are building on an error, add the argument:
 ```
-packer build -on-error=abort ubuntu_vmware.json
+build -on-error=abort
 ```
 If you want to test just the Ansible provisioning step:
 ```
