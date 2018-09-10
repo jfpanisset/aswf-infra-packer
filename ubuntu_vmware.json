@@ -1,7 +1,9 @@
 {
   "variables" : {
-    "hostname": "aswf-ubuntu",
-    "domainname": "panisset.io"
+    "hostname": "dev",
+    "domainname": "panisset.io",
+    "packer_username": "",
+    "packer_password": ""
   },
   "builders": [
     {
@@ -12,9 +14,9 @@
       ],
       "iso_checksum_type": "sha256",
       "iso_checksum": "a5b0ea5918f850124f3d72ef4b85bda82f0fcd02ec721be19c1a6952791c8ee8",
-      "ssh_username": "packer",
-      "ssh_password": "packer",
-      "shutdown_command": "echo 'packer' | sudo -S shutdown -P now",
+      "ssh_username": "{{user `packer_username`}}",
+      "ssh_password": "{{user `packer_password`}}",
+      "shutdown_command": "echo '{{user `packer_password`}}' | sudo -S shutdown -P now",
       "boot_command": [
         "<esc><wait>",
         "<esc><wait>",
@@ -37,6 +39,14 @@
         " grub-installer/bootdev=/dev/sda<wait>",
         " noapic<wait>",
         " preseed/url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/preseed.cfg<wait>",
+        " d-i:passwd/user-fullname={{user `packer_username`}}<wait>",
+        " d-i:passwd/username={{user `packer_username`}}<wait>",
+        " d-i:passwd/user-password={{user `packer_password`}}<wait>",
+        " d-i:passwd/user-password-again={{user `packer_password`}}<wait>",
+        " d-i:user-setup/allow-password-weak=true<wait>",
+        " d-i:user-setup/encrypt-home=false<wait>",
+        " d-i:passwd/user-default-groups={{user `packer_username`}},sudo<wait>",
+        " d-i:passwd/user-uid=900<wait>",
         " -- <wait>",
         "<enter><wait>"
       ],
@@ -65,10 +75,11 @@
     {
       "type": "ansible",
       "playbook_file": "./ansible/playbook.yml",
-      "user": "packer",
+      "user": "{{user `packer_username`}}",
       "extra_arguments": [
-        "-i ./ansible/inventory/hosts.yml", 
-        "-e ansible_become_pass=packer"
+        "-i ./ansible/inventory/hosts.yml",
+        "-u {{user `packer_username`}}",
+        "-e ansible_become_pass={{user `packer_password`}}"
       ]
     }
   ]

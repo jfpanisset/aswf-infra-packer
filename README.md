@@ -13,8 +13,11 @@ The official ASWF infrastructure is hosted at [VEXXHOST](http://vexxhost.com), a
 [OpenStack](https://www.openstack.org/). There are currently three main servers:
 
 * [Jenkins CI/CD Server](https://jenkins.aswf.io)
-* [Nexus Artifact Repositor](https://nexus.aswf.io)
+* [Nexus2 Artifact Repositor](https://nexus.aswf.io)
 * [Nexus3 Artifact Repositor](https://nexus3.aswf.io)
+
+These are virtual servers / vhosts hosted on a single machine, dev.aswf.io, running NGINX to proxy / redirect requests to the 3 vhosts (these
+may or may not be packaged as containers).
 
 The specific configuration of these servers is based on a
 [standard Linux Foundation configuration](https://docs.releng.linuxfoundation.org/en/latest/infra/bootstrap.html).
@@ -42,12 +45,14 @@ We also want to leverage a couple of [Ansible Galaxy](https://galaxy.ansible.com
 ```
 ansible-galaxy install geerlingguy.pip
 ansible-galaxy install geerlingguy.docker
+ansible-galaxy install debops.avahi
 ```
 
 The GitHub source for these Ansible roles can be found respectively at:
 
 * [Ansible Python Pip Role](https://github.com/geerlingguy/ansible-role-pip)
 * [Ansible Python Docker Role](https://github.com/geerlingguy/ansible-role-docker)
+* [Ansible Avahi Role](https://github.com/debops/ansible-avahi)
 
 # Implementation Details
 
@@ -57,24 +62,36 @@ significantly differently depending on whether the VM environment is configred f
 [boot_command](https://www.packer.io/docs/builders/vmware-iso.html#boot_command) virtual keystrokes passed to the Ubuntu installer via VNC by
 Packer will only work in a BIOS environment.
 
+Docker is then added to the VM using the Ansible Docker role, and Docker containers are created for the 3 vhosts (Jenkins, Nexus2 and Nexus3) as well
+as NGINX used to proxy / redirect access to the vhosts.
+
+* [NGINX Proxy Docker Container](https://hub.docker.com/r/jwilder/nginx-proxy/)
+* [Jenkins Docker Container](https://hub.docker.com/r/jenkins/jenkins/)
+* [Nexus2 Docker Container](https://hub.docker.com/r/sonatype/nexus/)
+* [Nexus3 Docker Container](https://hub.docker.com/r/sonatype/nexus3/)
+
+
 # Building the Infrastructure
 
 ```
-packer build ubuntu_vmware.json
+packer build -var 'packer_username=MY_USERN' -var 'packer_password=MY_PASSW' ubuntu_vmware.json
 ```
-
-or if you are debugging and don't want to lose the VM you are building on an error:
-
+If you are debugging and don't want to lose the VM you are building on an error:
 ```
 packer build -on-error=abort ubuntu_vmware.json
 ```
+If you want to test just the Ansible provisioning step:
+```
+ansible-playbook -i ansible/inventory/hosts.yml ansible/playbook.yml -u MY_USER -e ansible_become_pass=MY_PASS
+```
+(assuming you are using packer/packer as username/password, adjust to taste).
 
 If everything worked well, once you restart the completed VM, you should be able to access the services at:
 
-* [Jenkins](http://aswf-ubuntu.local:8080)
-* [Nexus](http://aswf-ubuntu.local:8081/nexus)
-* [Nexus3](http://aswf-ubuntu.local:8082)
+* [Jenkins](http://jenkins.local/)
+* [Nexus2](http://nexus.local/nexus)
+* [Nexus3](http://nexus3.local)
 
-(the build process installs avahi-daemon which should add the hostname aswf-ubuntu to the .local mDNS domain).
+(the build process installs avahi-daemon which should add the hostname dev to the .local mDNS domain).
 
 It can take a few minutes for the Nexus servers to fully initialize, before which they won't accept connections.

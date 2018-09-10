@@ -2,42 +2,74 @@
 
 - name: "Configure Docker server(s)"
   hosts: "all"
-  become: True
+  become: yes
   become_method: sudo
-  remote_user: packer
 
   vars:
     pip_install_packages:
       - name: docker
-    docker_users: ["packer"]
+    docker_users: ["{{ ansible_user }}"]
+    avahi__alias_enabled: True
 
   roles:
     - geerlingguy.pip
     - geerlingguy.docker
+    - role: debops.avahi
+      tags: [ 'role::avahi' ]
 
   tasks:
+  - name: add CNAME avahi aliases
+    # Can't use blockinfile, no comments in avahi aliases
+    lineinfile:
+      path: /etc/avahi/aliases
+      line: '{{ item }}'
+    with_items:
+      - 'jenkins.local'
+      - 'nexus.local'
+      - 'nexus3.local'
+
+  - name: add NGINX proxy container
+    docker_container:
+      name: aswf_nginx
+      image: jwilder/nginx-proxy
+      published_ports:
+        - 80:80
+      restart_policy: unless-stopped
+      volumes: /var/run/docker.sock:/tmp/docker.sock:ro
+
   - name: add Jenkins container
     docker_container:
       name: aswf_jenkins
       image: jenkins/jenkins:lts
-      published_ports:
-        - 8080:8080
-        - 50000:50000
+      exposed_ports:
+        - 8080
+        - 50000
       restart_policy: unless-stopped
+      volumes: jenkins_home:/var/jenkins_home
+      env:
+        VIRTUAL_HOST=jenkins.local
+        VIRTUAL_PORT=8080
 
   - name: add Nexus container
     docker_container:
      name: aswf_nexus
      image: sonatype/nexus
-     published_ports:
-       - 8081:8081
+     exposed_ports:
+       - 8081
      restart_policy: unless-stopped
+     env:
+       VIRTUAL_HOST=nexus.local
+       VIRTUAL_PORT=8081
 
   - name: add Nexus3 container
     docker_container:
       name: aswf_nexus3
       image: sonatype/nexus3
-      published_ports:
-        - 8082:8081
+      exposed_ports:
+        - 8081
       restart_policy: unless-stopped
+      env:
+        VIRTUAL_HOST=nexus3.local
+        VIRTUAL_PORT=8081
+
 
