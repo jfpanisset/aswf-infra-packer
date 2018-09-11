@@ -1,5 +1,4 @@
 ---
-
 - name: "Configure Docker server(s)"
   hosts: "all"
   become: yes
@@ -37,10 +36,36 @@
       restart_policy: unless-stopped
       volumes: /var/run/docker.sock:/tmp/docker.sock:ro
 
+  - name: create directory for Jenkins container build
+    file:
+      path: jenkins
+      state: directory
+      mode: 0755
+
+  - name: copy Dockerfile for Jenkins container
+    copy:
+      src: ../jenkins/Dockerfile
+      dest: jenkins/Dockerfile
+
+  - name: copy list of Jenkins plugins
+    copy:
+      src: ../jenkins/plugins.txt
+      dest: jenkins/plugins.txt
+
+  - name: copy Jenkins executor config
+    copy:
+      src: ../jenkins/executors.groovy
+      dest: jenkins/executors.groovy
+
+  - name: build Jenkins container
+    docker_image:
+      path: jenkins
+      name: aswf_jenkins
+
   - name: add Jenkins container
     docker_container:
       name: aswf_jenkins
-      image: jenkins/jenkins:lts
+      image: aswf_jenkins
       exposed_ports:
         - 8080
         - 50000

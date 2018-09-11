@@ -82,7 +82,7 @@ build -on-error=abort
 ```
 If you want to test just the Ansible provisioning step:
 ```
-ansible-playbook -i ansible/inventory/hosts.yml ansible/playbook.yml -u MY_USER -e ansible_become_pass=MY_PASS
+ansible-playbook -i ansible/inventory ansible/playbook.yml  --connection paramiko --user MY_USER --extra-vars ansible_ssh_pass=MY_PASS --extra-vars ansible_become_pass=MY_PASS
 ```
 (assuming you are using packer/packer as username/password, adjust to taste).
 
