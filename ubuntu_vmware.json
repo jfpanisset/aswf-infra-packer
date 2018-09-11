@@ -79,7 +79,9 @@
       "inventory_directory": "./ansible/inventory",
       "inventory_file": "hosts.yml",
       "extra_arguments": [
+        "--connection", "paramiko",
         "--user", "{{user `packer_username`}}",
+        "--extra-vars", "ansible_ssh_pass= {{user `packer_password`}}",
         "--extra-vars", "ansible_become_pass={{user `packer_password`}}"
       ]
     }
