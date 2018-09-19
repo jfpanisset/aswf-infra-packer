@@ -10,11 +10,12 @@ The [CI/CD infrastructure for the ASWF](https://www.aswf.io/community/) is publi
 can be found in a [ASWF GitHub repository](https://github.com/AcademySoftwareFoundation/ci-management).
 
 The official ASWF infrastructure is hosted at [VEXXHOST](http://vexxhost.com), a public cloud provider based on
-[OpenStack](https://www.openstack.org/). There are currently three main servers:
+[OpenStack](https://www.openstack.org/). There are currently four main servers:
 
 * [Jenkins CI/CD Server](https://jenkins.aswf.io)
-* [Nexus2 Artifact Repositor](https://nexus.aswf.io)
-* [Nexus3 Artifact Repositor](https://nexus3.aswf.io)
+* [Nexus2 Artifact Repository (used to store log files)](https://nexus.aswf.io)
+* [Nexus3 Artifact Repository](https://nexus3.aswf.io)
+* [SonarQube Code Quality Analysis Server](https://sonar.aswf.io)
 
 These are virtual servers / vhosts hosted on a single machine, dev.aswf.io, running NGINX to proxy / redirect requests to the 3 vhosts (these
 may or may not be packaged as containers).
@@ -46,6 +47,7 @@ We also want to leverage a couple of [Ansible Galaxy](https://galaxy.ansible.com
 ansible-galaxy install geerlingguy.pip
 ansible-galaxy install geerlingguy.docker
 ansible-galaxy install debops.avahi
+ansible-galaxy install emmetog.jenkins
 ```
 
 The GitHub source for these Ansible roles can be found respectively at:
@@ -69,7 +71,13 @@ as NGINX used to proxy / redirect access to the vhosts.
 * [Jenkins Docker Container](https://hub.docker.com/r/jenkins/jenkins/)
 * [Nexus2 Docker Container](https://hub.docker.com/r/sonatype/nexus/)
 * [Nexus3 Docker Container](https://hub.docker.com/r/sonatype/nexus3/)
+* [SonarQube Docker Container](https://hub.docker.com/r/_/sonarqube/)
 
+For local configurations [Avahi](https://www.avahi.org/) is used to add a dev.local entry to mDNS via Zeroconf, using the
+[ansible-avahi](https://github.com/debops/ansible-avahi) Ansible role. We also need 
+{jenkins,nexus,nexus3,sonar}.local CNAMEs.
+
+Jenkins will be configured via the Ansible role [emmetog.jenkins](https://github.com/emmetog/ansible-jenkins). 
 
 # Building the Infrastructure
 
@@ -91,6 +99,7 @@ If everything worked well, once you restart the completed VM, you should be able
 * [Jenkins](http://jenkins.local/)
 * [Nexus2](http://nexus.local/nexus)
 * [Nexus3](http://nexus3.local)
+* [SonarQube](http://sonar.local)
 
 (the build process installs avahi-daemon which should add the hostname dev to the .local mDNS domain).
 

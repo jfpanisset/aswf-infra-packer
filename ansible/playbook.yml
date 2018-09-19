@@ -26,6 +26,8 @@
       - 'jenkins.local'
       - 'nexus.local'
       - 'nexus3.local'
+      - 'sonar.local'
+      - 'logs.local'
 
   - name: add NGINX proxy container
     docker_container:
@@ -57,7 +59,7 @@
       src: ../jenkins/executors.groovy
       dest: jenkins/executors.groovy
 
-  - name: build Jenkins container
+  - name: build Jenkins image
     docker_image:
       path: jenkins
       name: aswf_jenkins
@@ -76,7 +78,7 @@
         VIRTUAL_PORT=8080
         JAVA_OPTS=-Djenkins.install.runSetupWizard=false
 
-  - name: add Nexus container
+  - name: add Nexus2 container
     docker_container:
      name: aswf_nexus
      image: sonatype/nexus
@@ -98,4 +100,18 @@
         VIRTUAL_HOST=nexus3.local
         VIRTUAL_PORT=8081
 
+  - name: add SonarQube container
+    docker_container:
+        name: aswf_sonar
+        image: sonarqube
+        exposed_ports:
+          - 9000
+          - 9092
+        restart_policy: unless-stopped
+        env:
+          VIRTUAL_HOST=sonar.local
+          VIRTUAL_PORT=9000
+          SONARQUBE_JDBC_USERNAME=sonar
+          SONARQUBE_JDBC_PASSWORD=sonar
+          SONARQUBE_JDBC_URL=jdbc:postgresql://localhost/sonar
 

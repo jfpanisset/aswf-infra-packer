@@ -1,6 +1,8 @@
+build-timeout
 config-file-provider
 description-setter
 envinject
+extended-read-permission
 git
 postbuildscript
 ssh-agent
