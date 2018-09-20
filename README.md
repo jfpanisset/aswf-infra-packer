@@ -41,7 +41,7 @@ brew install packer
 brew install ansible
 ```
 
-We also want to leverage a couple of [Ansible Galaxy](https://galaxy.ansible.com/) roles to help with Docker configuration:
+We also want to leverage [Ansible Galaxy](https://galaxy.ansible.com/) roles to help with Docker configuration:
 
 ```
 ansible-galaxy install geerlingguy.pip
@@ -55,6 +55,7 @@ The GitHub source for these Ansible roles can be found respectively at:
 * [Ansible Python Pip Role](https://github.com/geerlingguy/ansible-role-pip)
 * [Ansible Python Docker Role](https://github.com/geerlingguy/ansible-role-docker)
 * [Ansible Avahi Role](https://github.com/debops/ansible-avahi)
+* [Ansible Jenkins Role](https://github.com/emmetog/ansible-jenkins)
 
 # Implementation Details
 
@@ -77,7 +78,10 @@ For local configurations [Avahi](https://www.avahi.org/) is used to add a dev.lo
 [ansible-avahi](https://github.com/debops/ansible-avahi) Ansible role. We also need 
 {jenkins,nexus,nexus3,sonar}.local CNAMEs.
 
-Jenkins will be configured via the Ansible role [emmetog.jenkins](https://github.com/emmetog/ansible-jenkins). 
+Jenkins will be configured via the Ansible role [emmetog.jenkins](https://github.com/emmetog/ansible-jenkins), which can
+configure a Jenkins server inside a Docker container (in which case it starts with the official Jenkins Docker Container).
+
+The infrastructure uses HTTPS throughout, and generates certificates using the free [Let's Encrypt](https://letsencrypt.org/) service.
 
 # Building the Infrastructure
 
@@ -88,11 +92,12 @@ If you are debugging and don't want to lose the VM you are building on an error,
 ```
 build -on-error=abort
 ```
-If you want to test just the Ansible provisioning step:
+If you want to test just the Ansible provisioning step (optionally starting at a specific task):
 ```
-ansible-playbook -i ansible/inventory ansible/playbook.yml  --connection paramiko --user MY_USER --extra-vars ansible_ssh_pass=MY_PASS --extra-vars ansible_become_pass=MY_PASS
+ansible-playbook -i ansible/inventory ansible/playbook.yml  --connection paramiko --user MY_USER --extra-vars ansible_ssh_pass=MY_PASS --extra-vars ansible_become_pass=MY_PASS --start-at-task "TASK I AM DEBUGGING"
 ```
-(assuming you are using packer/packer as username/password, adjust to taste).
+
+
 
 If everything worked well, once you restart the completed VM, you should be able to access the services at:
 

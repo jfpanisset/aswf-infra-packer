@@ -1,3 +1,4 @@
+antisamy-markup-formatter
 build-timeout
 config-file-provider
 description-setter

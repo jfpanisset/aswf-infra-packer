@@ -57,9 +57,9 @@
       "guest_os_type": "ubuntu-64",
       "version": "12",
       "vmx_data": {
-        "cpuid.coresPerSocket": "1",
-        "memsize": "2048",
-        "numvcpus": "1",
+        "cpuid.coresPerSocket": "2",
+        "memsize": "4096",
+        "numvcpus": "2",
         "firmware": "bios",
         "keyboardAndMouseProfile": "macProfile",
         "smc.present": "TRUE",

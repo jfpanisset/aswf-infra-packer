@@ -10,11 +10,45 @@
     docker_users: ["{{ ansible_user }}"]
     avahi__alias_enabled: True
 
+    jenkins_version: lts
+    jenkins_url: http://127.0.0.1
+    jenkins_port: 8080
+    jenkins_install_via: "docker"
+    jenkins_include_secrets: false
+    jenkins_java_opts: -Djenkins.install.runSetupWizard=false
+    jenkins_config_owner: "{{ ansible_user }}"
+    jenkins_config_group: "{{ ansible_user }}"
+    jenkins_home: /var/jenkins_home
+    jenkins_docker_image: jenkins/jenkins
+    jenkins_docker_container_name: aswf_jenkins
+    jenkins_docker_expose_port: false
+    jenkins_source_config_xml: "{{ jenkins_source_dir_configs }}/aswf-config.xml"
+    jenkins_plugins:
+      - jdk-tool
+      - command-launcher
+      - antisamy-markup-formatter
+      - build-timeout
+      - config-file-provider
+      - description-setter
+      - envinject
+      - extended-read-permission
+      - git
+      - postbuildscript
+      - ssh-agent
+      - ws-cleanup
+      - gerrit-trigger
+      - github
+      - ghprb
+      - mask-passwords
+      - msginject
+      - openstack-cloud
+      - timestamper
+
   roles:
+    - role: debops.avahi
+      tags: role::avahi
     - geerlingguy.pip
     - geerlingguy.docker
-    - role: debops.avahi
-      tags: [ 'role::avahi' ]
 
   tasks:
   - name: add CNAME avahi aliases
@@ -38,45 +72,28 @@
       restart_policy: unless-stopped
       volumes: /var/run/docker.sock:/tmp/docker.sock:ro
 
-  - name: create directory for Jenkins container build
-    file:
-      path: jenkins
-      state: directory
-      mode: 0755
-
-  - name: copy Dockerfile for Jenkins container
-    copy:
-      src: ../jenkins/Dockerfile
-      dest: jenkins/Dockerfile
-
-  - name: copy list of Jenkins plugins
-    copy:
-      src: ../jenkins/plugins.txt
-      dest: jenkins/plugins.txt
-
-  - name: copy Jenkins executor config
-    copy:
-      src: ../jenkins/executors.groovy
-      dest: jenkins/executors.groovy
-
-  - name: build Jenkins image
-    docker_image:
-      path: jenkins
-      name: aswf_jenkins
-
   - name: add Jenkins container
+    include_role:
+      name: emmetog.jenkins
+
+  - name: stop and remove Jenkins container
     docker_container:
       name: aswf_jenkins
-      image: aswf_jenkins
+      state: absent
+
+  - name: restart Jenkins container as vhost
+    docker_container:
+      name: aswf_jenkins
+      image: jenkins/jenkins:lts
       exposed_ports:
         - 8080
         - 50000
       restart_policy: unless-stopped
       volumes: jenkins_home:/var/jenkins_home
       env:
-        VIRTUAL_HOST=jenkins.local
-        VIRTUAL_PORT=8080
-        JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+        JAVA_OPTS: "{{ jenkins_java_opts }}"
+        VIRTUAL_HOST: jenkins.local
+        VIRTUAL_PORT: 8080
 
   - name: add Nexus2 container
     docker_container:
@@ -86,8 +103,8 @@
        - 8081
      restart_policy: unless-stopped
      env:
-       VIRTUAL_HOST=nexus.local
-       VIRTUAL_PORT=8081
+       VIRTUAL_HOST: nexus.local
+       VIRTUAL_PORT: 8081
 
   - name: add Nexus3 container
     docker_container:
@@ -97,8 +114,8 @@
         - 8081
       restart_policy: unless-stopped
       env:
-        VIRTUAL_HOST=nexus3.local
-        VIRTUAL_PORT=8081
+        VIRTUAL_HOST: nexus3.local
+        VIRTUAL_PORT: 8081
 
   - name: add SonarQube container
     docker_container:
@@ -109,9 +126,9 @@
           - 9092
         restart_policy: unless-stopped
         env:
-          VIRTUAL_HOST=sonar.local
-          VIRTUAL_PORT=9000
-          SONARQUBE_JDBC_USERNAME=sonar
-          SONARQUBE_JDBC_PASSWORD=sonar
-          SONARQUBE_JDBC_URL=jdbc:postgresql://localhost/sonar
+          VIRTUAL_HOST: sonar.local
+          VIRTUAL_PORT: 9000
+          SONARQUBE_JDBC_USERNAME: sonar
+          SONARQUBE_JDBC_PASSWORD: sonar
+          SONARQUBE_JDBC_URL: jdbc:postgresql://localhost/sonar
 
