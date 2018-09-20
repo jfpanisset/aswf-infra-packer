@@ -92,6 +92,15 @@ If you are debugging and don't want to lose the VM you are building on an error,
 ```
 build -on-error=abort
 ```
+
+If the Ubuntu boot process gets stuck at the DHCP stage, you may need to restart VMWare Fusion networking:
+
+```
+sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –start
+sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –stop
+sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –configure
+```
+
 If you want to test just the Ansible provisioning step (optionally starting at a specific task):
 ```
 ansible-playbook -i ansible/inventory ansible/playbook.yml  --connection paramiko --user MY_USER --extra-vars ansible_ssh_pass=MY_PASS --extra-vars ansible_become_pass=MY_PASS --start-at-task "TASK I AM DEBUGGING"
