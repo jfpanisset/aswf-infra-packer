@@ -16,13 +16,45 @@
     jenkins_install_via: "docker"
     jenkins_include_secrets: false
     jenkins_java_opts: -Djenkins.install.runSetupWizard=false
-    jenkins_config_owner: "{{ ansible_user }}"
-    jenkins_config_group: "{{ ansible_user }}"
+    jenkins_config_owner: "jenkins"
+    jenkins_config_group: "jenkins"
     jenkins_home: /var/jenkins_home
     jenkins_docker_image: jenkins/jenkins
     jenkins_docker_container_name: aswf_jenkins
     jenkins_docker_expose_port: false
-    jenkins_source_config_xml: "{{ jenkins_source_dir_configs }}/aswf-config.xml"
+    jenkins_source_dir_configs: "{{ playbook_dir }}/jenkins-configs"
+    jenkins_source_config_xml: "{{ jenkins_source_dir_configs }}/config_pre_plugins.xml"
+    jenkins_include_custom_files: true
+    jenkins_custom_files:
+      - src:  "hudson.plugins.git.GitSCM.xml"
+        dest: "hudson.plugins.git.GitSCM.xml"
+      - src:  "jenkins.model.JenkinsLocationConfiguration.xml"
+        dest: "jenkins.model.JenkinsLocationConfiguration.xml"
+      - src:  "jenkins.plugins.msginject.MsgInjectConfig.xml"
+        dest: "jenkins.plugins.msginject.MsgInjectConfig.xml"
+      - src:  "envinject-plugin-configuration.xml"
+        dest: "envinject-plugin-configuration.xml"
+      - src:  "jenkins.CLI.xml"
+        dest: "jenkins.CLI.xml"
+      - src:  "jenkins.model.DownloadSettings.xml"
+        dest: "jenkins.model.DownloadSettings.xml"
+      - src:  "jenkins.security.QueueItemAuthenticatorConfiguration.xml"
+        dest: "jenkins.security.QueueItemAuthenticatorConfiguration.xml"
+      - src:  "jenkins.security.UpdateSiteWarningsConfiguration.xml"
+        dest: "jenkins.security.UpdateSiteWarningsConfiguration.xml"
+      - src:  "jenkins.security.apitoken.ApiTokenPropertyConfiguration.xml"
+        dest: "jenkins.security.apitoken.ApiTokenPropertyConfiguration.xml"
+      - src:  "gerrit-trigger.xml"
+        dest: "gerrit-trigger.xml"
+      - src:  "hudson.model.UpdateCenter.xml"
+        dest: "hudson.model.UpdateCenter.xml"
+      - src:  "hudson.plugins.git.GitTool.xml"
+        dest: "hudson.plugins.git.GitTool.xml"
+      - src:  "nodeMonitors.xml"
+        dest: "nodeMonitors.xml"
+      - src:  "org.jenkinsci.plugins.ghprb.GhprbTrigger.xml"
+        dest: "org.jenkinsci.plugins.ghprb.GhprbTrigger.xml"
+
     jenkins_plugins:
       - jdk-tool
       - command-launcher
@@ -43,6 +75,8 @@
       - msginject
       - openstack-cloud
       - timestamper
+      - matrix-auth
+      - matrix-project
 
   roles:
     - role: debops.avahi
@@ -72,14 +106,29 @@
       restart_policy: unless-stopped
       volumes: /var/run/docker.sock:/tmp/docker.sock:ro
 
+  - name: create jenkins user and group
+    user:
+      name: jenkins
+      comment: Jenkins User
+      home: /var/jenkins_home
+
   - name: add Jenkins container
     include_role:
       name: emmetog.jenkins
 
-  - name: stop and remove Jenkins container
+  - name: stop Jenkins container
     docker_container:
       name: aswf_jenkins
-      state: absent
+      state: stopped
+
+  - name: recopy Jenkins config that depends on plugins being present
+    copy:
+      src: "{{ jenkins_source_dir_configs }}/config.xml"
+      dest: "{{ jenkins_home }}/config.xml"
+      owner: jenkins
+      group: jenkins
+      mode: 0644
+
 
   - name: restart Jenkins container as vhost
     docker_container:
@@ -89,7 +138,7 @@
         - 8080
         - 50000
       restart_policy: unless-stopped
-      volumes: jenkins_home:/var/jenkins_home
+      volumes: "{{ jenkins_home }}:{{ jenkins_home }}"
       env:
         JAVA_OPTS: "{{ jenkins_java_opts }}"
         VIRTUAL_HOST: jenkins.local

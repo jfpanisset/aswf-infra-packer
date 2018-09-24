@@ -6,22 +6,23 @@ official Foundation project.
 
 # Architecture
 
-The [CI/CD infrastructure for the ASWF](https://www.aswf.io/community/) is public and relies on open source. The code fot this infrastructure
-can be found in a [ASWF GitHub repository](https://github.com/AcademySoftwareFoundation/ci-management).
+The [CI/CD infrastructure for the ASWF](https://www.aswf.io/community/) is public and relies on open source. The code for this infrastructure
+can be found in a [ASWF GitHub repository](https://github.com/AcademySoftwareFoundation/ci-management) and is documented by the [Linux Foundation Releng (Release Engineering) Documentation](https://docs.releng.linuxfoundation.org/en/latest/index.html).
 
 The official ASWF infrastructure is hosted at [VEXXHOST](http://vexxhost.com), a public cloud provider based on
-[OpenStack](https://www.openstack.org/). There are currently four main servers:
+[OpenStack](https://www.openstack.org/). The main servers are:
 
-* [Jenkins CI/CD Server](https://jenkins.aswf.io)
+* [Jenkins CI/CD Server (production)](https://jenkins.aswf.io)
+* [Jenkins CI/CD Server (sandbox)](https://jenkins.aswf.io/sandbox)
 * [Nexus2 Artifact Repository (used to store log files)](https://nexus.aswf.io)
 * [Nexus3 Artifact Repository](https://nexus3.aswf.io)
 * [SonarQube Code Quality Analysis Server](https://sonar.aswf.io)
 
-These are virtual servers / vhosts hosted on a single machine, dev.aswf.io, running NGINX to proxy / redirect requests to the 3 vhosts (these
+These are virtual servers / vhosts hosted on a single machine, dev.aswf.io, running NGINX to proxy / redirect requests to the individual vhosts (these
 may or may not be packaged as containers).
 
 The specific configuration of these servers is based on a
-[standard Linux Foundation configuration](https://docs.releng.linuxfoundation.org/en/latest/infra/bootstrap.html).
+[standard Linux Foundation configuration](https://docs.releng.linuxfoundation.org/en/latest/infra/bootstrap.html) and the overall architecture is presented in this [Environment Overview](https://docs.releng.linuxfoundation.org/en/latest/environment-overview.html).
 
 This project uses [Packer](https://www.packer.io/) and [Ansible](https://www.ansible.com/) to create a virtual machine
 running [Docker](https://www.docker.com/) containers for those three servers, configured to match the Linux Foundation / ASWF
@@ -80,8 +81,9 @@ For local configurations [Avahi](https://www.avahi.org/) is used to add a dev.lo
 
 Jenkins will be configured via the Ansible role [emmetog.jenkins](https://github.com/emmetog/ansible-jenkins), which can
 configure a Jenkins server inside a Docker container (in which case it starts with the official Jenkins Docker Container).
+An introduction to this Ansible role can be found in this blog post, [How To Deploy Jenkins Completely Pre-Configured - Automating Jenkins](https://blog.nimbleci.com/2016/10/11/how-to-deploy-jenkins-completely-pre-configured/).
 
-The infrastructure uses HTTPS throughout, and generates certificates using the free [Let's Encrypt](https://letsencrypt.org/) service.
+The infrastructure uses HTTPS throughout, and uses certificates generated using the free and automated [Let's Encrypt](https://letsencrypt.org/) service.
 
 # Building the Infrastructure
 

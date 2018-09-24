@@ -1,0 +1,9 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<com.sonyericsson.hudson.plugins.gerrit.trigger.PluginImpl plugin="gerrit-trigger@2.27.7">
+  <servers class="java.util.concurrent.CopyOnWriteArrayList"/>
+  <pluginConfig>
+    <numberOfReceivingWorkerThreads>3</numberOfReceivingWorkerThreads>
+    <numberOfSendingWorkerThreads>1</numberOfSendingWorkerThreads>
+    <replicationCacheExpirationInMinutes>360</replicationCacheExpirationInMinutes>
+  </pluginConfig>
+</com.sonyericsson.hudson.plugins.gerrit.trigger.PluginImpl>

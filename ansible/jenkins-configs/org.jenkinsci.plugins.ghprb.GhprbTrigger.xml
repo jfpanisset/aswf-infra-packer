@@ -1,0 +1,24 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<org.jenkinsci.plugins.ghprb.GhprbTrigger_-DescriptorImpl plugin="ghprb@1.42.0">
+  <configVersion>1</configVersion>
+  <whitelistPhrase>.*add\W+to\W+whitelist.*</whitelistPhrase>
+  <okToTestPhrase>.*ok\W+to\W+test.*</okToTestPhrase>
+  <retestPhrase>.*test\W+this\W+please.*</retestPhrase>
+  <skipBuildPhrase>.*\[skip\W+ci\].*</skipBuildPhrase>
+  <blackListCommitAuthor></blackListCommitAuthor>
+  <cron>H/5 * * * *</cron>
+  <useComments>false</useComments>
+  <useDetailedComments>false</useDetailedComments>
+  <manageWebhooks>true</manageWebhooks>
+  <unstableAs>FAILURE</unstableAs>
+  <autoCloseFailedPullRequests>false</autoCloseFailedPullRequests>
+  <displayBuildErrorsOnDownstreamBuilds>false</displayBuildErrorsOnDownstreamBuilds>
+  <extensions>
+    <org.jenkinsci.plugins.ghprb.extensions.status.GhprbSimpleStatus>
+      <commitStatusContext></commitStatusContext>
+      <showMatrixStatus>false</showMatrixStatus>
+      <addTestResults>false</addTestResults>
+      <completedStatus/>
+    </org.jenkinsci.plugins.ghprb.extensions.status.GhprbSimpleStatus>
+  </extensions>
+</org.jenkinsci.plugins.ghprb.GhprbTrigger_-DescriptorImpl>
