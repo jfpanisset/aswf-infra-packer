@@ -66,8 +66,7 @@ significantly differently depending on whether the VM environment is configred f
 [boot_command](https://www.packer.io/docs/builders/vmware-iso.html#boot_command) virtual keystrokes passed to the Ubuntu installer via VNC by
 Packer will only work in a BIOS environment.
 
-Docker is then added to the VM using the Ansible Docker role, and Docker containers are created for the 3 vhosts (Jenkins, Nexus2 and Nexus3) as well
-as NGINX used to proxy / redirect access to the vhosts.
+Docker is then added to the VM using the Ansible Docker role, and Docker containers are created for the 3 vhosts (Jenkins, Nexus2 and Nexus3) as well as NGINX used to proxy / redirect access to the vhosts.
 
 * [NGINX Proxy Docker Container](https://hub.docker.com/r/jwilder/nginx-proxy/)
 * [Jenkins Docker Container](https://hub.docker.com/r/jenkins/jenkins/)
@@ -75,15 +74,33 @@ as NGINX used to proxy / redirect access to the vhosts.
 * [Nexus3 Docker Container](https://hub.docker.com/r/sonatype/nexus3/)
 * [SonarQube Docker Container](https://hub.docker.com/r/_/sonarqube/)
 
+## DNS / mDNS
+
 For local configurations [Avahi](https://www.avahi.org/) is used to add a dev.local entry to mDNS via Zeroconf, using the
 [ansible-avahi](https://github.com/debops/ansible-avahi) Ansible role. We also need 
 {jenkins,nexus,nexus3,sonar}.local CNAMEs.
+
+## Authentication
+
+To replace the Linux Foundation identity system at https://identity.linuxfoundation.org/ we will instead use OpenLDAP. It might be possible (preferable?) to stick OpenLDAP inside a container, for now it will run directly on the dev host.
+
+## SSL Considerations
+
+The infrastructure uses HTTPS throughout, and uses certificates generated using the free and automated [Let's Encrypt](https://letsencrypt.org/) service.
+
+## Jenkins Configuration
 
 Jenkins will be configured via the Ansible role [emmetog.jenkins](https://github.com/emmetog/ansible-jenkins), which can
 configure a Jenkins server inside a Docker container (in which case it starts with the official Jenkins Docker Container).
 An introduction to this Ansible role can be found in this blog post, [How To Deploy Jenkins Completely Pre-Configured - Automating Jenkins](https://blog.nimbleci.com/2016/10/11/how-to-deploy-jenkins-completely-pre-configured/).
 
-The infrastructure uses HTTPS throughout, and uses certificates generated using the free and automated [Let's Encrypt](https://letsencrypt.org/) service.
+Although this role can build a container with a working Jenkins server, provisioned with plugins and a `config.xml` configuration file, it does not allow for fine grained configuration of Jenkins features. Instead it relies on interactive configuration using the Jenkins web GUI, harvesting of the XML configuration files (typically saved in the Jenkins home directory) and reintegration of these in the Ansible source directory. Since the Jenkins server will be started with your `config.xml` config file before specific plugins are loaded, you may not be able to fully pre-configure `config.xml`, since some plugin-specifc settings (especially related to security and authentication) can prevent Jenkins from starting when the corresponding plugins are not already loaded. The workaround is to maintain two `config.xml` files, one for the initial build of the container, to be subsequently replaced by
+the final version including all plugin-specific settings.
+
+This two step process is also required to pass the `VIRTUAL_HOST` and `VIRTUAL_PORT` environment variables to the Jenkins container needed for the NGINX reverse proxy.
+
+We set the Security Realm to use the [ldap plugin](https://plugins.jenkins.io/ldap) and point it to the `ldap.local` CNAME.
+
 
 # Building the Infrastructure
 
@@ -92,7 +109,7 @@ packer build -var packer_username=MY_USER -var packer_password=MY_PASS ubuntu_vm
 ```
 If you are debugging and don't want to lose the VM you are building on an error, add the argument:
 ```
-build -on-error=abort
+-on-error=abort
 ```
 
 If the Ubuntu boot process gets stuck at the DHCP stage, you may need to restart VMWare Fusion networking:

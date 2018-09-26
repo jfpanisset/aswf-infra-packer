@@ -25,6 +25,7 @@
     jenkins_source_dir_configs: "{{ playbook_dir }}/jenkins-configs"
     jenkins_source_config_xml: "{{ jenkins_source_dir_configs }}/config_pre_plugins.xml"
     jenkins_include_custom_files: true
+    jenkins_include_secrets: true
     jenkins_custom_files:
       - src:  "hudson.plugins.git.GitSCM.xml"
         dest: "hudson.plugins.git.GitSCM.xml"
@@ -77,6 +78,7 @@
       - timestamper
       - matrix-auth
       - matrix-project
+      - ldap
 
   roles:
     - role: debops.avahi
@@ -96,6 +98,7 @@
       - 'nexus3.local'
       - 'sonar.local'
       - 'logs.local'
+      - 'ldap.local'
 
   - name: add NGINX proxy container
     docker_container:
@@ -111,6 +114,14 @@
       name: jenkins
       comment: Jenkins User
       home: /var/jenkins_home
+      shell: /bin/bash
+
+  - name: create jobbuilder user and group
+    user:
+      name: jobbuilder
+      comment: Jenkins Job Builder
+      home: /home/jobbuilder
+      shell: /bin/bash
 
   - name: add Jenkins container
     include_role:
@@ -130,7 +141,7 @@
       mode: 0644
 
 
-  - name: restart Jenkins container as vhost
+  - name: restart Jenkins container as vhost with host entries
     docker_container:
       name: aswf_jenkins
       image: jenkins/jenkins:lts
@@ -143,6 +154,13 @@
         JAVA_OPTS: "{{ jenkins_java_opts }}"
         VIRTUAL_HOST: jenkins.local
         VIRTUAL_PORT: 8080
+      etc_hosts:
+        jenkins.local: 172.17.0.1
+        ldap.local:    172.17.0.1
+        sonar.local:   172.17.0.1
+        nexus.local:   172.17.0.1
+        logs.local:    172.17.0.1
+        nexus3.local:  172.17.0.1
 
   - name: add Nexus2 container
     docker_container:

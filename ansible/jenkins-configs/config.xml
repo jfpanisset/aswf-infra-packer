@@ -8,12 +8,54 @@
   <useSecurity>true</useSecurity>
   <authorizationStrategy class="hudson.security.GlobalMatrixAuthorizationStrategy">
     <permission>hudson.model.Hudson.Administer:anonymous</permission>
+    <permission>hudson.model.Hudson.Administer:jobbuilder</permission>
     <permission>hudson.model.Hudson.Read:anonymous</permission>
+    <permission>hudson.model.Item.Configure:jobbuilder</permission>
+    <permission>hudson.model.Item.Create:jobbuilder</permission>
+    <permission>hudson.model.Item.Delete:jobbuilder</permission>
+    <permission>hudson.model.Item.Discover:jobbuilder</permission>
     <permission>hudson.model.Item.ExtendedRead:anonymous</permission>
     <permission>hudson.model.Item.Read:anonymous</permission>
+    <permission>hudson.model.Item.Read:jobbuilder</permission>
+    <permission>hudson.model.View.Configure:jobbuilder</permission>
+    <permission>hudson.model.View.Create:jobbuilder</permission>
+    <permission>hudson.model.View.Delete:jobbuilder</permission>
     <permission>hudson.model.View.Read:anonymous</permission>
+    <permission>hudson.model.View.Read:jobbuilder</permission>
   </authorizationStrategy>
-  <securityRealm class="hudson.security.SecurityRealm$None"/>
+  <securityRealm class="hudson.security.LDAPSecurityRealm" plugin="ldap@1.20">
+    <disableMailAddressResolver>false</disableMailAddressResolver>
+    <configurations>
+      <jenkins.security.plugins.ldap.LDAPConfiguration>
+        <server>ldap://ldap.local</server>
+        <rootDN>dc=local</rootDN>
+        <inhibitInferRootDN>false</inhibitInferRootDN>
+        <userSearchBase></userSearchBase>
+        <userSearch>uid={0}</userSearch>
+        <groupMembershipStrategy class="jenkins.security.plugins.ldap.FromGroupSearchLDAPGroupMembershipStrategy">
+          <filter></filter>
+        </groupMembershipStrategy>
+        <managerDN>cn=admin,dc=local</managerDN>
+        <managerPasswordSecret>{AQAAABAAAAAQXCwaijXXDx5LSM6VTd6wwAjBYNHcwoV1TTsmTwg4NAc=}</managerPasswordSecret>
+        <displayNameAttributeName>displayname</displayNameAttributeName>
+        <mailAddressAttributeName>mail</mailAddressAttributeName>
+        <ignoreIfUnavailable>false</ignoreIfUnavailable>
+        <extraEnvVars class="linked-hash-map">
+          <entry>
+            <string>com.sun.jndi.ldap.connect.timeout</string>
+            <string>10000</string>
+          </entry>
+        </extraEnvVars>
+      </jenkins.security.plugins.ldap.LDAPConfiguration>
+    </configurations>
+    <cache>
+      <size>50</size>
+      <ttl>60</ttl>
+    </cache>
+    <userIdStrategy class="jenkins.model.IdStrategy$CaseInsensitive"/>
+    <groupIdStrategy class="jenkins.model.IdStrategy$CaseInsensitive"/>
+    <disableRolePrefixing>true</disableRolePrefixing>
+  </securityRealm>
   <disableRememberMe>false</disableRememberMe>
   <projectNamingStrategy class="jenkins.model.ProjectNamingStrategy$DefaultProjectNamingStrategy"/>
   <workspaceDir>${ITEM_ROOTDIR}/workspace</workspaceDir>
