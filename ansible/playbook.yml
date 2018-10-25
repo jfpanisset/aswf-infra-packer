@@ -5,17 +5,34 @@
   become_method: sudo
 
   vars:
+    
+    cert_template_dir: /etc/ssl/templates
+    ca_config_json: /etc/ssl/templates/ca-config.json
+    ca_csr_json: /etc/ssl/templates/ca-csr.json
+    ca_server_cfssl_temp: /tmp/ca_server
+    ca_server_key: /etc/ssl/private/ca_server.key
+    ca_server_cert: /etc/ssl/certs/ca_server.pem
+    ca_server_csr: /etc/ssl/certs/ca_server.csr
+    ldap_server_cfssl_temp: /tmp/ldap_server
+    ldap_server_key: /etc/ssl/private/ldap_server.key
+    ldap_server_cert: /etc/ssl/certs/ldap_server.pem
+    ldap_server_csr: /etc/ssl/certs/ldap_server.csr
+    ldap_server_dhparams: /etc/ssl/certs/ldap_server_dhparam.pem
+    ldap_client_cert: /etc/ldap/ca_certs.pem
+
+    aswf_ldap_domain: "dc={{ aswf_domain | regex_replace('\\.', ',dc=') }}"
+
     pip_install_packages:
       - name: docker
+      - name: python-ldap
     docker_users: ["{{ ansible_user }}"]
     avahi__alias_enabled: True
-
+    
     jenkins_version: lts
     jenkins_url: http://127.0.0.1
     jenkins_port: 8080
     jenkins_install_via: "docker"
-    jenkins_include_secrets: false
-    jenkins_java_opts: -Djenkins.install.runSetupWizard=false
+    jenkins_java_opts: -Djenkins.install.runSetupWizard=false -Djavax.net.ssl.trustStore=/var/jenkins_home/.keystore/cacerts -Djavax.net.ssl.trustStorePassword=changeit
     jenkins_config_owner: "jenkins"
     jenkins_config_group: "jenkins"
     jenkins_home: /var/jenkins_home
@@ -83,10 +100,296 @@
   roles:
     - role: debops.avahi
       tags: role::avahi
-    - geerlingguy.pip
-    - geerlingguy.docker
-
+ 
   tasks:
+  - name: Update and upgrade apt packages
+    apt:
+      upgrade: yes
+      update_cache: yes
+
+  - name: install packages to build python-ldap and manage certificates
+    apt:
+      name: "{{ packages }}"
+    vars:
+      packages:
+        - libldap2-dev
+        - libsasl2-dev
+        - gnutls-bin
+        - ssl-cert
+        - golang-cfssl
+
+  - name: create cert template dir
+    file:
+      path: "{{ cert_template_dir }}"
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+      
+  - name: copy cfssl certificate config
+    copy:
+      src: ca-config.json
+      dest: "{{ ca_config_json }}"
+
+  - name: copy cfssl certificate request
+    copy:
+      src: ca-csr.json
+      dest: "{{ ca_csr_json }}"
+
+  - name: Are we missing any of the ssl related files
+    stat:
+      path: "{{ item }}"
+    register: cert_stat
+    with_items: 
+      - "{{ ca_server_key }}"
+      - "{{ ca_server_cert }}"
+      - "{{ ca_server_csr }}"
+      - "{{ ldap_server_key }}"
+      - "{{ ldap_server_cert }}"
+      - "{{ ldap_server_csr }}"
+
+  - name: Any one missing file and we regenerate them all
+    # Likely there's a better way to do this
+    set_fact:
+      regen_certs: (cert_stat.results[0].stat.exists == False) or
+                   (cert_stat.results[1].stat.exists == False) or
+                   (cert_stat.results[2].stat.exists == False) or
+                   (cert_stat.results[3].stat.exists == False) or
+                   (cert_stat.results[4].stat.exists == False) or
+                   (cert_stat.results[5].stat.exists == False) 
+
+  - name: generate self signed CA private key and cert
+    shell: cfssl gencert -initca "{{ ca_csr_json }}" | cfssljson -bare "{{ ca_server_cfssl_temp }}"
+    when: regen_certs
+
+  - name: generate LDAP server private key and cert
+    shell: cfssl gencert -ca "{{ ca_server_cfssl_temp }}.pem" -ca-key "{{ ca_server_cfssl_temp }}-key.pem" -config "{{ ca_config_json }}" 
+             -hostname dev."{{ aswf_domain }}",ldap."{{ aswf_domain }}"  "{{ ca_csr_json }}" |
+             cfssljson -bare "{{ ldap_server_cfssl_temp }}"
+    when: regen_certs
+
+  - name: copy CA server private key
+    copy:
+      src: "{{ ca_server_cfssl_temp }}-key.pem"
+      dest: "{{ ca_server_key }}"
+      mode: 0640
+      group: ssl-cert
+      remote_src: yes
+      force: yes
+    when: regen_certs
+
+  - name: copy CA self signed certificate
+    copy:
+      src: "{{ ca_server_cfssl_temp }}.pem"
+      dest: "{{ ca_server_cert }}"
+      remote_src: yes
+      force: yes
+    when: regen_certs
+
+  - name: copy CA CSR
+    copy:
+      src: "{{ ca_server_cfssl_temp }}.csr"
+      dest: "{{ ca_server_csr }}"
+      remote_src: yes
+      force: yes
+    when: regen_certs
+
+  - name: copy LDAP server private key
+    copy:
+      src: "{{ ldap_server_cfssl_temp }}-key.pem"
+      dest: "{{ ldap_server_key }}"
+      mode: 0640
+      group: ssl-cert
+      remote_src: yes
+      force: yes
+    when: regen_certs
+
+  - name: copy LDAP self signed certificate
+    copy:
+      src: "{{ ldap_server_cfssl_temp }}.pem"
+      dest: "{{ ldap_server_cert }}"
+      remote_src: yes
+      force: yes
+    when: regen_certs
+
+  - name: copy LDAP CSR
+    copy:
+      src: "{{ ldap_server_cfssl_temp }}.csr"
+      dest: "{{ ldap_server_csr }}"
+      remote_src: yes
+      force: yes
+    when: regen_certs
+
+  - name: delete intermediate files
+    file:
+      path: "{{ item }}"
+      state: absent
+    with_items:
+      - "{{ ca_server_cfssl_temp }}-key.pem"
+      - "{{ ca_server_cfssl_temp }}.pem"
+      - "{{ ca_server_cfssl_temp }}.csr"
+      - "{{ ldap_server_cfssl_temp }}-key.pem"
+      - "{{ ldap_server_cfssl_temp }}.pem"
+      - "{{ ldap_server_cfssl_temp }}.csr"
+    when: regen_certs
+
+  - name: generate LDAP server dhparam file
+    # Diffie-Hellman parameter file for key exchange to ensure forward secrecy
+    # Equivalent GnuTLS command is:
+    # certtool --generate-dh-params --outfile dhparam_file.pem --bits 2048
+    command: openssl dhparam -out "{{ ldap_server_dhparams }}" 2048
+    args:
+      creates: "{{ ldap_server_dhparams }}"
+
+  - name: add openldap group
+    # this shouldn't happen, but we need to make sure LDAP private key is readable in weird cases where LDAP server
+    # is already partially configured to look for it and won't start if it's not accessible. So we need to make sure
+    # we have openldap user and group
+    group:
+      name: openldap
+      system: yes
+  
+  - name: add openldap user
+    user:
+      name: openldap
+      system: yes
+      home: /var/lib/ldap
+      shell: /in/false
+      group: openldap
+      groups: ssl-cert
+      comment: "OpenLDAP Server Account"
+      password_lock: yes
+
+  - name: missing AppArmor permissions for slapd
+    # OpenLDAP installation role won't be able to start slapd without some additional AppArmor permissions
+    copy:
+      src: slapd.apparmor
+      dest: /etc/apparmor.d/local/usr.sbin.slapd
+
+  - name: restart AppArmor
+    service:
+      name:  apparmor
+      state: reloaded
+
+  - name: install OpenLDAP slapd
+    include_role:
+      name: stuvusit.slapd-base
+    vars:
+      slapd_etc_dir: /etc/ldap
+      slapd_mdb_dir: /var/lib/ldap
+      slapd_olc_rootdn: cn=root,cn=config
+      slapd_olc_rootdn_password: "{{ ansible_ssh_pass }}"
+
+  - name: slapd AppArmor attach_disconnected
+    lineinfile:
+      path: /etc/apparmor.d/usr.sbin.slapd
+      regexp: '^/usr/sbin/slapd (flags=\(attach_disconnected\) |)\{$'
+      line:   '/usr/sbin/slapd flags=(attach_disconnected) {'
+
+  - name: restart AppArmor
+    service:
+      name:  apparmor
+      state: reloaded
+
+  - name: LDAP cert accessible for LDAP clients
+    copy:
+      src: "{{ ca_server_cert }}"
+      dest: "{{ ldap_client_cert }}"
+      remote_src: yes
+
+  - name: LDAP clients pick up correct CA cert
+    # /etc/ldap/ldap.conf comes from libldap-common package
+    lineinfile:
+      path: /etc/ldap/ldap.conf
+      regexp: '^TLS_CACERT\s+(/etc/ssl/certs/ca-certificates.crt|{{ ldap_client_cert }})$'
+      line:   'TLS_CACERT {{ ldap_client_cert }}'
+
+  - name: LDAP clients ignore TLS certificate errors
+    lineinfile:
+      path: /etc/ldap/ldap.conf
+      regexp: '^TLS_REQCERT\s+(never|allow|try|demand|hard)$'
+      line:   'TLS_REQCERT demand'
+
+  - name: configure OpenLDAP slapd
+    # See below: can't set olcTLSCertificateKeyFile / olcTLSCertificateFile using this role
+    include_role:
+      name: stuvusit.slapd-config
+    vars:
+      slapd_olc_rootdn: cn=root,cn=config
+      slapd_olc_rootdn_password: "{{ ansible_ssh_pass }}"
+      slapd_monitor_rootdn_password: "{{ ansible_ssh_pass }}"        
+      slapd_mdb_rootdn_password: "{{ ansible_ssh_pass }}"
+      slapd_additional_modules: [ 'memberof' ]
+      slapd_mdb_dir: /var/lib/ldap
+      slapd_global_config:
+        olcTLSCACertificateFile: "{{ ca_server_cert }}"
+      slapd_mdb_config:
+        olcSuffix: "{{ aswf_ldap_domain }}"
+      slapd_mdb_overlays:
+        memberof:
+          olcOverlay: memberof
+          objectClass: olcMemberOf
+          olcMemberOfDangling: ignore
+
+  - name: Configure TLS private key (ignore errors)
+    # Workaround for slapd wanting TLS properties set at same time
+    # see https://github.com/ansible/ansible/issues/25665
+    ldap_attr:
+      bind_dn: cn=root,cn=config
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: cn=config
+      name: olcTLSCertificateKeyFile
+      values: "{{ ldap_server_key }}"
+      state: exact
+    failed_when: False
+
+  - name: Configure TLS certificate
+    ldap_attr:
+      bind_dn: cn=root,cn=config
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: cn=config
+      name: olcTLSCertificateFile
+      values: "{{ ldap_server_cert }}"
+      state: exact
+
+  - name: Configure TLS private key
+    ldap_attr:
+      bind_dn: cn=root,cn=config
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: cn=config
+      name: olcTLSCertificateKeyFile
+      values: "{{ ldap_server_key }}"
+      state: exact
+
+  - name: Configure Diffie-Hellman key exchange parameters
+    ldap_attr:
+      bind_dn: cn=root,cn=config
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: cn=config
+      name: olcTLSDHParamFile
+      values: "{{ ldap_server_dhparams }}"
+      state: exact
+
+  - name: Configure TLS only access to slapd
+    # Once this is done we can no longer edit cn=config without specifying start_tls: yes
+    # Note sure if there's a way to do this with stuvusit.slapd-config role: it uses
+    # ldapmodify command line
+    ldap_attr:
+      bind_dn: cn=root,cn=config
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: cn=config
+      name: olcSecurity
+      values: "tls=1"
+      state: exact
+  
+  - name: install required pip packages
+    include_role:
+      name: geerlingguy.pip
+
+  - name: install and configure Docker
+    include_role:
+      name: geerlingguy.docker
+
   - name: add CNAME avahi aliases
     # Can't use blockinfile, no comments in avahi aliases
     lineinfile:
@@ -99,6 +402,12 @@
       - 'sonar.local'
       - 'logs.local'
       - 'ldap.local'
+
+  - name: restart avahi-alias service
+    # avahi-alias service doesn't support reload
+    service:
+      name:  avahi-alias
+      state: restarted 
 
   - name: add NGINX proxy container
     docker_container:
@@ -117,6 +426,7 @@
       shell: /bin/bash
 
   - name: create jobbuilder user and group
+    # This possibly only needed inside LDAP database
     user:
       name: jobbuilder
       comment: Jenkins Job Builder
@@ -127,75 +437,92 @@
     include_role:
       name: emmetog.jenkins
 
+  #- name: add container to inventory
+  #  add_host:
+  #    name: aswf_jenkins
+  #    ansible_connection: docker
+  #    ansible_docker_extra_args: "--tlsverify --tlscacert=/path/to/ca.pem --tlscert=/path/to/client-cert.pem --tlskey=/path/to/client-key.pem -H=tcp://myserver.net:4243"
+  #    ansible_user: jenkins
+  #  changed_when: false
+
   - name: stop Jenkins container
     docker_container:
       name: aswf_jenkins
       state: stopped
 
   - name: recopy Jenkins config that depends on plugins being present
-    copy:
-      src: "{{ jenkins_source_dir_configs }}/config.xml"
+    template:
+      src: "{{ jenkins_source_dir_configs }}/config.xml.j2"
       dest: "{{ jenkins_home }}/config.xml"
       owner: jenkins
       group: jenkins
       mode: 0644
 
+  #- name: add LDAP cert to Java keystore
+  #  docker:
 
   - name: restart Jenkins container as vhost with host entries
     docker_container:
       name: aswf_jenkins
+      hostname: jenkins.{{ aswf_domain }}
       image: jenkins/jenkins:lts
       exposed_ports:
         - 8080
         - 50000
       restart_policy: unless-stopped
-      volumes: "{{ jenkins_home }}:{{ jenkins_home }}"
+      volumes: 
+        - "{{ jenkins_home }}:{{ jenkins_home }}"
+        - /etc/ldap:/etc/ldap
       env:
         JAVA_OPTS: "{{ jenkins_java_opts }}"
-        VIRTUAL_HOST: jenkins.local
+        VIRTUAL_HOST: jenkins.{{ aswf_domain }}
         VIRTUAL_PORT: 8080
       etc_hosts:
-        jenkins.local: 172.17.0.1
-        ldap.local:    172.17.0.1
-        sonar.local:   172.17.0.1
-        nexus.local:   172.17.0.1
-        logs.local:    172.17.0.1
-        nexus3.local:  172.17.0.1
+        jenkins.panisset.io: 172.17.0.1
+        sonar.panisset.io:   172.17.0.1
+        nexus.panisset.io:   172.17.0.1
+        logs.panisset.io:    172.17.0.1
+        nexus3.panisset.io:  172.17.0.1
+        dev.panisset.io:  172.17.0.1
+        ldap.panisset.io: 172.17.0.1
 
   - name: add Nexus2 container
     docker_container:
      name: aswf_nexus
+     hostname: nexus.{{ aswf_domain }}
      image: sonatype/nexus
      exposed_ports:
        - 8081
      restart_policy: unless-stopped
      env:
-       VIRTUAL_HOST: nexus.local
+       VIRTUAL_HOST: nexus.{{ aswf_domain }}
        VIRTUAL_PORT: 8081
 
   - name: add Nexus3 container
     docker_container:
       name: aswf_nexus3
+      hostname: nexus3.{{ aswf_domain }}
       image: sonatype/nexus3
       exposed_ports:
         - 8081
       restart_policy: unless-stopped
       env:
-        VIRTUAL_HOST: nexus3.local
+        VIRTUAL_HOST: nexus3.{{ aswf_domain }}
         VIRTUAL_PORT: 8081
 
-  - name: add SonarQube container
-    docker_container:
-        name: aswf_sonar
-        image: sonarqube
-        exposed_ports:
-          - 9000
-          - 9092
-        restart_policy: unless-stopped
-        env:
-          VIRTUAL_HOST: sonar.local
-          VIRTUAL_PORT: 9000
-          SONARQUBE_JDBC_USERNAME: sonar
-          SONARQUBE_JDBC_PASSWORD: sonar
-          SONARQUBE_JDBC_URL: jdbc:postgresql://localhost/sonar
+#  - name: add SonarQube container
+#    docker_container:
+#        name: aswf_sonar
+#        hostname: sonar.{{ aswf_domain }}
+#        image: sonarqube
+#        exposed_ports:
+#          - 9000
+#          - 9092
+#        restart_policy: unless-stopped
+#        env:
+#          VIRTUAL_HOST: sonar.{{ aswf_domain }}
+#          VIRTUAL_PORT: 9000
+#          SONARQUBE_JDBC_USERNAME: sonar
+#          SONARQUBE_JDBC_PASSWORD: sonar
+#          SONARQUBE_JDBC_URL: jdbc:postgresql://localhost/sonar
 

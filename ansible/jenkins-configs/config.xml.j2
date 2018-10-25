@@ -1,7 +1,7 @@
 <?xml version='1.1' encoding='UTF-8'?>
 <hudson>
   <disabledAdministrativeMonitors/>
-  <version>2.138.1</version>
+  <version>2.138.2</version>
   <installStateName>RESTART</installStateName>
   <numExecutors>0</numExecutors>
   <mode>NORMAL</mode>
@@ -27,16 +27,18 @@
     <disableMailAddressResolver>false</disableMailAddressResolver>
     <configurations>
       <jenkins.security.plugins.ldap.LDAPConfiguration>
-        <server>ldap://ldap.local</server>
-        <rootDN>dc=local</rootDN>
-        <inhibitInferRootDN>false</inhibitInferRootDN>
-        <userSearchBase></userSearchBase>
+        <server>ldaps://ldap.{{ aswf_domain }}:636</server>
+        <rootDN>{{ aswf_ldap_domain }}</rootDN>
+        <inhibitInferRootDN>true</inhibitInferRootDN>
+        <userSearchBase>ou=mypeople</userSearchBase>
         <userSearch>uid={0}</userSearch>
-        <groupMembershipStrategy class="jenkins.security.plugins.ldap.FromGroupSearchLDAPGroupMembershipStrategy">
-          <filter></filter>
+        <groupSearchBase>ou=groups</groupSearchBase>
+        <groupSearchFilter>member={0}</groupSearchFilter>
+        <groupMembershipStrategy class="jenkins.security.plugins.ldap.FromUserRecordLDAPGroupMembershipStrategy">
+          <attributeName>memberOf</attributeName>
         </groupMembershipStrategy>
-        <managerDN>cn=admin,dc=local</managerDN>
-        <managerPasswordSecret>{AQAAABAAAAAQXCwaijXXDx5LSM6VTd6wwAjBYNHcwoV1TTsmTwg4NAc=}</managerPasswordSecret>
+        <managerDN>cn=root,cn=config,{{ aswf_ldap_domain }}</managerDN>
+        <managerPasswordSecret>{AQAAABAAAAAQQbZSPlmD9xeC6RZt7k4dOS6UxFTF6qr0OlL/vxFMnzo=}</managerPasswordSecret>
         <displayNameAttributeName>displayname</displayNameAttributeName>
         <mailAddressAttributeName>mail</mailAddressAttributeName>
         <ignoreIfUnavailable>false</ignoreIfUnavailable>

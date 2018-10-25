@@ -1,5 +1,7 @@
 # Academy Software Foundation Replicated CI/CD Environment
 
+**THIS IS WORK IN PROGRESS AND DOESN'T DO A WHOLE LOT YET.**
+
 This project attempts to replicate the CI/CD infrastructure being put in place by the [Linux Foundation](https://www.linuxfoundation.org/)
 for the [Academy Software Foundation](http://aswf.io) (ASWF) to encourage testing and experimentation on projects before they are become an
 official Foundation project.
@@ -48,6 +50,8 @@ We also want to leverage [Ansible Galaxy](https://galaxy.ansible.com/) roles to 
 ansible-galaxy install geerlingguy.pip
 ansible-galaxy install geerlingguy.docker
 ansible-galaxy install debops.avahi
+ansible-galaxy install stuvusit.slapd-base
+ansible-galaxy install stuvusit.slapd-config
 ansible-galaxy install emmetog.jenkins
 ```
 
@@ -56,6 +60,9 @@ The GitHub source for these Ansible roles can be found respectively at:
 * [Ansible Python Pip Role](https://github.com/geerlingguy/ansible-role-pip)
 * [Ansible Python Docker Role](https://github.com/geerlingguy/ansible-role-docker)
 * [Ansible Avahi Role](https://github.com/debops/ansible-avahi)
+* [OpenLDAP slapd Base Install Role](https://github.com/stuvusIT/slapd-base)
+* [OpenLDAP slapd Configuration Role](https://github.com/stuvusIT/slapd-config)
+* [AppArmor Configuration Role](https://github.com/manala/ansible-role-apparmor)
 * [Ansible Jenkins Role](https://github.com/emmetog/ansible-jenkins)
 
 # Implementation Details
@@ -80,13 +87,17 @@ For local configurations [Avahi](https://www.avahi.org/) is used to add a dev.lo
 [ansible-avahi](https://github.com/debops/ansible-avahi) Ansible role. We also need 
 {jenkins,nexus,nexus3,sonar}.local CNAMEs.
 
-## Authentication
+## LDAP Authentication
 
-To replace the Linux Foundation identity system at https://identity.linuxfoundation.org/ we will instead use OpenLDAP. It might be possible (preferable?) to stick OpenLDAP inside a container, for now it will run directly on the dev host.
+To replace the Linux Foundation identity system at https://identity.linuxfoundation.org/ we will instead use OpenLDAP. It might be possible (preferable?) to stick OpenLDAP inside a container, for now it will run directly on the dev host. On Ubuntu 18.04 the default configuration for OpenLDAP's `slapd` daemon uses AppArmor to limit where slapd can store databases (see `/etc/apparmor.d/usr.sbin.slapd`), by default in `/var/lib/ldap`, whereas the `slapd_mdb_dir` Ansible role variable wants to store the `mbd` database in `/var/lib/slapd`, we need to make sure to point it to '/var/lib/ldap'.
 
-## SSL Considerations
+The tutorial at https://www.digitalocean.com/community/tutorials/how-to-encrypt-openldap-connections-using-starttls is used as the basis of setting up self signed SSL certificates for `slapd`, a tricky subtlety is that you cannot set the TLS-related config entries `olcTLSCertificateKeyFile` and `olcTLSCertificateFile` independantly (you get a `implementation specific)error (80)` if you try to do so, as per https://github.com/ansible/ansible/issues/25665), unfortunately the `stuvusit.slapd-config` Ansible role does not have support for setting multiple config entries at once. There exists a pull request for a `ldap_attrs` Ansible module at https://github.com/ansible/ansible/pull/31664 but unfortunately it hasn't been accepted yet into an official Ansible release, so for now we use a workaround.
 
-The infrastructure uses HTTPS throughout, and uses certificates generated using the free and automated [Let's Encrypt](https://letsencrypt.org/) service.
+## TLS Considerations
+
+The ASWF infrastructure uses HTTPS / LDAPS throughout, ideally we want to use certificates generated using the free and automated [Let's Encrypt](https://letsencrypt.org/) service. But for now we are using self signed certificates.
+
+None of the OpenLDAP tutorials I tried to follow would result in a fully working TLS setup that would work when enforcing LDAP server certificate verification on the client side (i.e. setting `TLS_REQCERT demand` in `/etc/ldap/ldap.conf`). A working recipe turned out to be embedded in the [osixia OpenLDAP docker image](https://github.com/osixia/docker-openldap) which in turn uses the [CloudFlare CFSSL](https://github.com/cloudflare/cfssl) tool to generate certificates. In retrospect a lot of time might have been saved by using the osixia OpenLDAP container.
 
 ## Jenkins Configuration
 
@@ -99,13 +110,13 @@ the final version including all plugin-specific settings.
 
 This two step process is also required to pass the `VIRTUAL_HOST` and `VIRTUAL_PORT` environment variables to the Jenkins container needed for the NGINX reverse proxy.
 
-We set the Security Realm to use the [ldap plugin](https://plugins.jenkins.io/ldap) and point it to the `ldap.local` CNAME.
+We set the Security Realm to use the [ldap plugin](https://plugins.jenkins.io/ldap) and point it to the `ldap.local` CNAME. [Notes on LDAP server setup and client authentication](https://medium.com/@griggheo/notes-on-ldap-server-setup-and-client-authentication-546f51cbd6f4) has some very useful not on how to configure the LDAP plugin in Jenkins, in particular with regards to getting certificates to work for TLS / LDAPS.
 
 
 # Building the Infrastructure
 
 ```
-packer build -var packer_username=MY_USER -var packer_password=MY_PASS ubuntu_vmware.json
+packer build -var packer_username=MY_USER -var packer_password=MY_PASS -var packer_domain=MY_DOMAIN ubuntu_vmware.json
 ```
 If you are debugging and don't want to lose the VM you are building on an error, add the argument:
 ```
@@ -120,9 +131,11 @@ sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –stop
 sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –configure
 ```
 
+Also it appears that VMware Fusion 11 may conflict with Docker, potentially preventing VMs from starting, sometimes with an error message about "Too many virtual machines". If that happens, you may need to change Docker preferences to not start automatically on startup / login and reboot your machine.
+
 If you want to test just the Ansible provisioning step (optionally starting at a specific task):
 ```
-ansible-playbook -i ansible/inventory ansible/playbook.yml  --connection paramiko --user MY_USER --extra-vars ansible_ssh_pass=MY_PASS --extra-vars ansible_become_pass=MY_PASS --start-at-task "TASK I AM DEBUGGING"
+ansible-playbook -i ansible/inventory ansible/playbook.yml  --connection paramiko --user MY_USER --extra-vars ansible_ssh_pass=MY_PASS --extra-vars ansible_become_pass=MY_PASS --extra-vars aswf_domain=MY_DOMAIN --start-at-task "TASK I AM DEBUGGING"
 ```
 
 

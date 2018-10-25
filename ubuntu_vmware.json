@@ -1,7 +1,7 @@
 {
   "variables" : {
     "hostname": "dev",
-    "domainname": "panisset.io",
+    "packer_domain": "",
     "packer_username": "",
     "packer_password": ""
   },
@@ -34,7 +34,7 @@
         " keyboard-configuration/layout=USA<wait>",
         " keyboard-configuration/variant=USA<wait>",
         " locale=en_US<wait>",
-        " netcfg/get_domain={{user `domainname`}}<wait>",
+        " netcfg/get_domain={{user `packer_domain`}}<wait>",
         " netcfg/get_hostname={{user `hostname`}}<wait>",
         " grub-installer/bootdev=/dev/sda<wait>",
         " noapic<wait>",
@@ -82,7 +82,8 @@
         "--connection", "paramiko",
         "--user", "{{user `packer_username`}}",
         "--extra-vars", "ansible_ssh_pass={{user `packer_password`}}",
-        "--extra-vars", "ansible_become_pass={{user `packer_password`}}"
+        "--extra-vars", "ansible_become_pass={{user `packer_password`}}",
+        "--extra-vars", "aswf_domain={{user `packer_domain`}}"
       ]
     }
   ]
