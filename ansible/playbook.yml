@@ -132,8 +132,8 @@
       dest: "{{ ca_config_json }}"
 
   - name: copy cfssl certificate request
-    copy:
-      src: ca-csr.json
+    template:
+      src: ca-csr-json.j2
       dest: "{{ ca_csr_json }}"
 
   - name: Are we missing any of the ssl related files
