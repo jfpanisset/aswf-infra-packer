@@ -33,12 +33,12 @@
         <userSearchBase>ou=users</userSearchBase>
         <userSearch>uid={0}</userSearch>
         <groupSearchBase>ou=groups</groupSearchBase>
-        <groupSearchFilter>member={0}</groupSearchFilter>
-        <groupMembershipStrategy class="jenkins.security.plugins.ldap.FromUserRecordLDAPGroupMembershipStrategy">
-          <attributeName>memberOf</attributeName>
+        <groupSearchFilter>(&amp; (cn={0}) (objectclass=posixGroup))</groupSearchFilter>
+        <groupMembershipStrategy class="jenkins.security.plugins.ldap.FromGroupSearchLDAPGroupMembershipStrategy">
+          <filter>memberUid={1}</filter>
         </groupMembershipStrategy>
         <managerDN>cn=binduser,{{ aswf_ldap_domain }}</managerDN>
-        <managerPasswordSecret>{AQAAABAAAAAQ8w4K2Iz9sfU5ovCYkKi/PAyNk+RfngO7V0xq2VG/wn4=}</managerPasswordSecret>
+        <managerPasswordSecret>{AQAAABAAAAAQ8drCztVcJWtR22vNA9JZIZyexWodTU2F/x04omBfdkc=}</managerPasswordSecret>
         <displayNameAttributeName>displayName</displayNameAttributeName>
         <mailAddressAttributeName>mail</mailAddressAttributeName>
         <ignoreIfUnavailable>false</ignoreIfUnavailable>
