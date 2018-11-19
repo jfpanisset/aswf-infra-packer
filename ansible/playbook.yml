@@ -19,6 +19,7 @@
     ldap_server_csr: /etc/ssl/certs/ldap_server.csr
     ldap_server_dhparams: /etc/ssl/certs/ldap_server_dhparam.pem
     ldap_client_cert: /etc/ldap/ca_certs.pem
+    ldap_config_admin: cn=admin,cn=config
 
     aswf_ldap_domain: "dc={{ aswf_domain | regex_replace('\\.', ',dc=') }}"
 
@@ -33,6 +34,7 @@
     jenkins_port: 8080
     jenkins_install_via: "docker"
     jenkins_java_opts: -Djenkins.install.runSetupWizard=false -Djavax.net.ssl.trustStore=/var/jenkins_home/.keystore/cacerts -Djavax.net.ssl.trustStorePassword=changeit
+#    jenkins_java_opts: -Djenkins.install.runSetupWizard=false 
     jenkins_config_owner: "jenkins"
     jenkins_config_group: "jenkins"
     jenkins_home: /var/jenkins_home
@@ -107,7 +109,7 @@
       upgrade: yes
       update_cache: yes
 
-  - name: install packages to build python-ldap and manage certificates
+  - name: install packages to build python-ldap, manage certificates and run OpenLDAP
     apt:
       name: "{{ packages }}"
     vars:
@@ -117,6 +119,56 @@
         - gnutls-bin
         - ssl-cert
         - golang-cfssl
+        - slapd
+        - ldap-utils
+        - openjdk-8-jre-headless
+
+  - name: install required pip packages
+    include_role:
+      name: geerlingguy.pip
+
+  - name: slapd debconf questions
+    # These values are taken from the osixia/openldap container
+    debconf:
+      name:     slapd
+      question: "{{ item.question }}"
+      value:    "{{ item.value }}"
+      vtype:    "{{ item.vtype }}"
+    loop:
+      - { question: 'slapd/internal/generated_adminpw', value: '{{ ansible_ssh_pass }}',     vtype: 'password' }
+      - { question: 'slapd/internal/adminpw',           value: '{{ ansible_ssh_pass }}',     vtype: 'password' }
+      - { question: 'slapd/password2',                  value: '{{ ansible_ssh_pass }}',     vtype: 'password' }
+      - { question: 'slapd/password1',                  value: '{{ ansible_ssh_pass }}',     vtype: 'password' }
+      - { question: 'slapd/dump_database_destdir',      value: '/var/backups/slapd-VERSION', vtype: 'string'   }
+      - { question: 'slapd/domain',                     value: '{{ aswf_domain }}',          vtype: 'string'   }
+      - { question: 'shared/organization',              value: 'ASWF Clone',                 vtype: 'string'   }
+      - { question: 'slapd/backend',                    value: 'MDB',                        vtype: 'string'   }
+      - { question: 'slapd/purge_database',             value: 'true',                       vtype: 'boolean'  }
+      - { question: 'slapd/move_old_database',          value: 'true',                       vtype: 'boolean'  }
+      - { question: 'slapd/allow_ldap_v2',              value: 'false',                      vtype: 'boolean'  }
+      - { question: 'slapd/no_configuration',           value: 'false',                      vtype: 'boolean'  }
+      - { question: 'slapd/dump_database',              value: 'when needed',                vtype: 'select'   }
+
+  - name: reconfigure slapd
+    # There's an outstanding Ansible PR for a reconfigure option to debconf module but as of Oct 2018 it hasn't gone in yet
+    # https://github.com/ansible/ansible/pull/39794
+    command: dpkg-reconfigure -f noninteractive slapd
+
+  - name: simple authentication for cn=config LDAP database
+    # By default debconf only sets up -Y EXTERNAL SASL authentication for cn=config LDAP database
+    # Add simple authentication as per:
+    # https://ubuntuforums.org/showthread.php?t=1515119
+    # FIXME: need to crypt and encode the password, follow instructions at:
+    # https://www.digitalocean.com/community/tutorials/how-to-change-account-passwords-on-an-openldap-server
+    ldap_attr:
+      # Don't set bind_dn, rely on default -Y EXTERNAL SASL authentication
+      dn: olcDatabase={0}config,cn=config
+      name: "{{ item.name }}"
+      values: "{{ item.val }}"
+      state: exact
+    loop:
+      - { name: olcRootDN, val: "{{ ldap_config_admin }}" }
+      - { name: olcRootPW, val: "{{ ansible_ssh_pass }}" }
 
   - name: create cert template dir
     file:
@@ -140,7 +192,7 @@
     stat:
       path: "{{ item }}"
     register: cert_stat
-    with_items: 
+    loop: 
       - "{{ ca_server_key }}"
       - "{{ ca_server_cert }}"
       - "{{ ca_server_csr }}"
@@ -224,7 +276,7 @@
     file:
       path: "{{ item }}"
       state: absent
-    with_items:
+    loop:
       - "{{ ca_server_cfssl_temp }}-key.pem"
       - "{{ ca_server_cfssl_temp }}.pem"
       - "{{ ca_server_cfssl_temp }}.csr"
@@ -250,6 +302,7 @@
       system: yes
   
   - name: add openldap user
+    # And now make sure that openldap group is part of ssl-cert group
     user:
       name: openldap
       system: yes
@@ -262,6 +315,7 @@
 
   - name: missing AppArmor permissions for slapd
     # OpenLDAP installation role won't be able to start slapd without some additional AppArmor permissions
+    # FIXME: is this still needed?
     copy:
       src: slapd.apparmor
       dest: /etc/apparmor.d/local/usr.sbin.slapd
@@ -271,14 +325,14 @@
       name:  apparmor
       state: reloaded
 
-  - name: install OpenLDAP slapd
-    include_role:
-      name: stuvusit.slapd-base
-    vars:
-      slapd_etc_dir: /etc/ldap
-      slapd_mdb_dir: /var/lib/ldap
-      slapd_olc_rootdn: cn=root,cn=config
-      slapd_olc_rootdn_password: "{{ ansible_ssh_pass }}"
+#  - name: install OpenLDAP slapd
+#    include_role:
+#      name: stuvusit.slapd-base
+#    vars:
+#      slapd_etc_dir: /etc/ldap
+#      slapd_mdb_dir: /var/lib/ldap
+#      slapd_olc_rootdn: cn=root,cn=config
+#      slapd_olc_rootdn_password: "{{ ansible_ssh_pass }}"
 
   - name: slapd AppArmor attach_disconnected
     lineinfile:
@@ -304,38 +358,22 @@
       regexp: '^TLS_CACERT\s+(/etc/ssl/certs/ca-certificates.crt|{{ ldap_client_cert }})$'
       line:   'TLS_CACERT {{ ldap_client_cert }}'
 
-  - name: LDAP clients ignore TLS certificate errors
+  - name: LDAP clients respect TLS certificate errors
     lineinfile:
       path: /etc/ldap/ldap.conf
       regexp: '^TLS_REQCERT\s+(never|allow|try|demand|hard)$'
       line:   'TLS_REQCERT demand'
 
-  - name: configure OpenLDAP slapd
-    # See below: can't set olcTLSCertificateKeyFile / olcTLSCertificateFile using this role
-    include_role:
-      name: stuvusit.slapd-config
-    vars:
-      slapd_olc_rootdn: cn=root,cn=config
-      slapd_olc_rootdn_password: "{{ ansible_ssh_pass }}"
-      slapd_monitor_rootdn_password: "{{ ansible_ssh_pass }}"        
-      slapd_mdb_rootdn_password: "{{ ansible_ssh_pass }}"
-      slapd_additional_modules: [ 'memberof' ]
-      slapd_mdb_dir: /var/lib/ldap
-      slapd_global_config:
-        olcTLSCACertificateFile: "{{ ca_server_cert }}"
-      slapd_mdb_config:
-        olcSuffix: "{{ aswf_ldap_domain }}"
-      slapd_mdb_overlays:
-        memberof:
-          olcOverlay: memberof
-          objectClass: olcMemberOf
-          olcMemberOfDangling: ignore
+  - name: restart slapd
+    service:
+      name: slapd
+      state: restarted
 
   - name: Configure TLS private key (ignore errors)
     # Workaround for slapd wanting TLS properties set at same time
     # see https://github.com/ansible/ansible/issues/25665
     ldap_attr:
-      bind_dn: cn=root,cn=config
+      bind_dn: "{{ ldap_config_admin }}"
       bind_pw: "{{ ansible_ssh_pass }}"
       dn: cn=config
       name: olcTLSCertificateKeyFile
@@ -343,59 +381,154 @@
       state: exact
     failed_when: False
 
-  - name: Configure TLS certificate
+  - name: Configure slapd TLS parameters
     ldap_attr:
-      bind_dn: cn=root,cn=config
+      bind_dn: "{{ ldap_config_admin }}"
       bind_pw: "{{ ansible_ssh_pass }}"
       dn: cn=config
-      name: olcTLSCertificateFile
-      values: "{{ ldap_server_cert }}"
+      name: "{{ item.name }}"
+      values: "{{ item.path }}"
       state: exact
-
-  - name: Configure TLS private key
-    ldap_attr:
-      bind_dn: cn=root,cn=config
-      bind_pw: "{{ ansible_ssh_pass }}"
-      dn: cn=config
-      name: olcTLSCertificateKeyFile
-      values: "{{ ldap_server_key }}"
-      state: exact
-
-  - name: Configure Diffie-Hellman key exchange parameters
-    ldap_attr:
-      bind_dn: cn=root,cn=config
-      bind_pw: "{{ ansible_ssh_pass }}"
-      dn: cn=config
-      name: olcTLSDHParamFile
-      values: "{{ ldap_server_dhparams }}"
-      state: exact
+    loop:
+      - { name: olcTLSCertificateFile,    path: "{{ ldap_server_cert }}" }
+      - { name: olcTLSCertificateKeyFile, path: "{{ ldap_server_key }}" }
+      - { name: olcTLSCACertificateFile,  path: "{{ ca_server_cert }}" }
+      - { name: olcTLSDHParamFile,        path: "{{ ldap_server_dhparams }}" }
 
   - name: Configure TLS only access to slapd
-    # Once this is done we can no longer edit cn=config without specifying start_tls: yes
-    # Note sure if there's a way to do this with stuvusit.slapd-config role: it uses
-    # ldapmodify command line
+    # Once this is done we can no longer edit LDAP database without specifying start_tls: yes
     ldap_attr:
-      bind_dn: cn=root,cn=config
+      bind_dn: "{{ ldap_config_admin }}"
       bind_pw: "{{ ansible_ssh_pass }}"
-      dn: cn=config
+      dn: olcDatabase={1}mdb,cn=config
       name: olcSecurity
       values: "tls=1"
       state: exact
-  
-  - name: install required pip packages
-    include_role:
-      name: geerlingguy.pip
+
+  - name: SHA-1 hashed password for LDAP users
+    shell: /usr/sbin/slappasswd -s "{{ ansible_ssh_pass }}"
+    register: hashed_user_ldap_passwd
+
+  - name: explicit bind user entry for LDAP
+    # FIXME: what should its password be? Can set it with:
+    # ldappasswd -H ldapi:/// -x -D cn=admin,{{ aswf_ldap_domain }} -w LDAP_ROOT_PW -Z -S "cn=binduser,{{ aswf_ldap_domain }}"
+    # FIXME: should this user live in the users OU? Should it derive from organizationalPerson
+    # FIXME: can this exist only as an LDAP account? Jenkins seems to be happy with that
+    # FIXME: should all our LDAP accounts derive from the same set of base objectClasses ?
+    ldap_entry:
+      bind_dn: cn=admin,{{ aswf_ldap_domain }}
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: cn=binduser,{{ aswf_ldap_domain }}
+      objectClass:
+        - top
+        - posixAccount
+        - shadowAccount
+        - inetOrgPerson
+      attributes:
+        cn: binduser
+        uid: binduser
+        uidNumber: 2000
+        gidNumber: 200
+        homeDirectory: /home/binduser
+        loginShell: /bin/bash
+        gecos: suser
+        displayName: LDAP Bind Account
+        sn: Bind
+        userPassword: "{{ hashed_user_ldap_passwd.stdout }}"
+        shadowLastChange: -1
+        shadowMax: -1
+        shadowWarning: -1
+      state: present
+      start_tls: yes
+
+  - name: disallow anonymous binding to LDAP
+    ldap_attr:
+      bind_dn: "{{ ldap_config_admin }}"
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: cn=config
+      name: olcDisallows
+      values: bind_anon
+      state: exact
+      start_tls: yes
+
+  - name: disable anonymous access to LDAP frontend
+    ldap_attr:
+      bind_dn: "{{ ldap_config_admin }}"
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: olcDatabase={-1}frontend,cn=config
+      name: olcRequires
+      values: authc
+      state: exact
+      start_tls: yes
+
+  - name: enable LDAPS
+    lineinfile:
+      path: /etc/default/slapd
+      regexp: '^SLAPD_SERVICES="ldap:/// (ldaps:/// |)ldapi:///"$'
+      line:   'SLAPD_SERVICES="ldap:/// ldaps:/// ldapi:///"'
+
+  - name: restart slapd
+    service:
+      name: slapd
+      state: restarted
+
+  - name: create OU for users
+    ldap_entry:
+      bind_dn: cn=admin,{{ aswf_ldap_domain }}
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: ou=users,{{ aswf_ldap_domain }}
+      objectClass: organizationalUnit
+      attributes:
+        ou: users
+        description: all users
+      state: present
+      start_tls: yes
+
+  - name: create OU for groups
+    ldap_entry:
+      bind_dn: cn=admin,{{ aswf_ldap_domain }}
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: ou=groups,{{ aswf_ldap_domain }}
+      objectClass: organizationalUnit
+      attributes:
+        ou: groups
+        description: all users
+      state: present
+      start_tls: yes
 
   - name: install and configure Docker
     include_role:
       name: geerlingguy.docker
+
+  #
+  # The following is a failed experiment at enabling the Docker API to allow Ansible
+  # to run inside containers on the remote host. See the commented out calls lower 
+  # to add the Jenkins container to the inventory and to use delegate_to to run
+  # a specific module inside that container.
+  #
+
+ #- name: enable Docker API create systemd override directory
+ #   file:
+ #     path: /etc/systemd/system/docker.service.d
+ #     state: directory
+
+ # - name: enable Docker API created systemd override file
+ #   copy:
+ #     src: docker_override.conf
+ #     dest: /etc/systemd/system/docker.service.d/override.conf
+
+ # - name: enable Docker API restart daemon
+ #   systemd:
+ #     state: restarted
+ #     daemon_reload: yes
+ #     name: docker
 
   - name: add CNAME avahi aliases
     # Can't use blockinfile, no comments in avahi aliases
     lineinfile:
       path: /etc/avahi/aliases
       line: '{{ item }}'
-    with_items:
+    loop:
       - 'jenkins.local'
       - 'nexus.local'
       - 'nexus3.local'
@@ -419,35 +552,117 @@
       volumes: /var/run/docker.sock:/tmp/docker.sock:ro
 
   - name: create jenkins user and group
+    # For now assume the jenkins account is just a system account that doesn't need a password for logins,
+    # uncomment the "password" parameter to give it a password
     user:
       name: jenkins
       comment: Jenkins User
       home: /var/jenkins_home
       shell: /bin/bash
+      # password: "{{ ansible_ssh_pass | password_hash('sha512', 65534 | random(seed=inventory_hostname) | string) }}"
+    register: jenkins_user_result
 
   - name: create jobbuilder user and group
-    # This possibly only needed inside LDAP database
+    # FIXME: This possibly only needed inside LDAP user database?
     user:
       name: jobbuilder
       comment: Jenkins Job Builder
       home: /home/jobbuilder
       shell: /bin/bash
+      password: "{{ ansible_ssh_pass | password_hash('sha512', 65534 | random(seed=inventory_hostname) | string) }}"
+    register: jobbuilder_user_result
+
+  - name: create jobbuilder LDAP user
+    # FIXME: what should its password be? Can set it with:
+    # ldappasswd -H ldapi:/// -x -D cn=admin,{{ aswf_ldap_domain }} -w LDAP_ROOT_PW -Z -S "cn=binduser,{{ aswf_ldap_domain }}"
+    # FIXME: what should we be using for email addresses?
+    ldap_entry:
+      bind_dn: cn=admin,{{ aswf_ldap_domain }}
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: cn=jobbuilder,ou=users,{{ aswf_ldap_domain }}
+      objectClass:
+        - top
+        - posixAccount
+        - shadowAccount
+        - inetOrgPerson
+      attributes:
+        cn: jobbuilder
+        uid: jobbuilder
+        uidNumber: "{{ jobbuilder_user_result.uid }}"
+        gidNumber: "{{ jobbuilder_user_result.uid }}"
+        homeDirectory: /home/jobbuilder
+        loginShell: /bin/bash
+        gecos: Job Builder
+        displayName: Job Builder
+        sn: Builder
+        mail: jobbuider@{{ aswf_domain }}
+        userPassword: "{{ hashed_user_ldap_passwd.stdout }}"
+        shadowLastChange: -1
+        shadowMax: -1
+        shadowWarning: -1
+      state: present
+      start_tls: yes
+
+  - name: create jobbuilder LDAP group
+    ldap_entry:
+      bind_dn: cn=admin,{{ aswf_ldap_domain }}
+      bind_pw: "{{ ansible_ssh_pass }}"
+      dn: cn=jobbuilder,ou=groups,{{ aswf_ldap_domain }}
+      objectClass:
+        - top
+        - posixGroup
+      attributes:
+        cn: jobbuilder
+        description: Job Builder Group
+        memberUid: jobbuilder
+        gidNumber: "{{ jobbuilder_user_result.uid }}"
+      state: present
+      start_tls: yes
 
   - name: add Jenkins container
     include_role:
       name: emmetog.jenkins
 
-  #- name: add container to inventory
-  #  add_host:
-  #    name: aswf_jenkins
-  #    ansible_connection: docker
-  #    ansible_docker_extra_args: "--tlsverify --tlscacert=/path/to/ca.pem --tlscert=/path/to/client-cert.pem --tlskey=/path/to/client-key.pem -H=tcp://myserver.net:4243"
-  #    ansible_user: jenkins
-  #  changed_when: false
+# - name: add Jenkins container to inventory
+#    add_host:
+#      name: "{{ jenkins_docker_container_name }}"
+#      ansible_connection: docker
+#      ansible_docker_extra_args: "-H=tcp://dev.{{ aswf_domain }}:2376"
+#      ansible_user: jenkins
+#    changed_when: false
+
+  - name: create Java keystore location for Jenkins container
+    file:
+      path: "{{ jenkins_home }}/.keystore"
+      state: directory
+
+  - name: copy default Java keystore into Jenkins container
+    copy:
+      src: /usr/lib/jvm/java-8-openjdk-amd64/jre/lib/security/cacerts
+      dest: "{{ jenkins_home }}/.keystore/"
+      remote_src: yes
+
+  - name: copy self-signed CA cert into Jenkins container
+    copy:
+      src: "{{ ca_server_cert }}"
+      dest: "{{ jenkins_home }}/.keystore/"
+      remote_src: yes
+
+  - name: Add self signed CA cert to Jenkins Java keystore
+    # FIXME: too many hardcoded paths
+    # Can't seem to make it work inside the container
+    # delegate_to: "{{ jenkins_docker_container_name }}"
+    java_cert:
+      keystore_path: "{{ jenkins_home }}/.keystore/cacerts"
+      cert_path: "{{ jenkins_home }}/.keystore/ca_server.pem"
+      cert_alias: ldap.{{ aswf_domain }}636
+      keystore_pass: changeit
+      keystore_create: yes
+      state: present
 
   - name: stop Jenkins container
     docker_container:
-      name: aswf_jenkins
+      name: "{{ jenkins_docker_container_name }}"
       state: stopped
 
   - name: recopy Jenkins config that depends on plugins being present
@@ -458,12 +673,10 @@
       group: jenkins
       mode: 0644
 
-  #- name: add LDAP cert to Java keystore
-  #  docker:
-
   - name: restart Jenkins container as vhost with host entries
+    # FIXME: hard coded my domain name
     docker_container:
-      name: aswf_jenkins
+      name: "{{ jenkins_docker_container_name }}"
       hostname: jenkins.{{ aswf_domain }}
       image: jenkins/jenkins:lts
       exposed_ports:

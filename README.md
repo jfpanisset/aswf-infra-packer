@@ -35,7 +35,7 @@ A local [VMware Fusion](https://www.vmware.com/products/fusion.html) build on ma
 # Dependencies
 
 On macOS this project uses open source components pre-packaged with the [Homebrew](https://brew.sh/) open source packaging system. This has been
-tested under macOS 10.13.6, and with VMWare Fusion 8.5.10.
+tested under macOS 10.14.1, and with VMWare Fusion 11.0.1.
 
 Once Homebrew is installed, at a minimum you will need:
 
@@ -50,8 +50,7 @@ We also want to leverage [Ansible Galaxy](https://galaxy.ansible.com/) roles to 
 ansible-galaxy install geerlingguy.pip
 ansible-galaxy install geerlingguy.docker
 ansible-galaxy install debops.avahi
-ansible-galaxy install stuvusit.slapd-base
-ansible-galaxy install stuvusit.slapd-config
+ansible-galaxy install manala.apparmor
 ansible-galaxy install emmetog.jenkins
 ```
 
@@ -60,8 +59,6 @@ The GitHub source for these Ansible roles can be found respectively at:
 * [Ansible Python Pip Role](https://github.com/geerlingguy/ansible-role-pip)
 * [Ansible Python Docker Role](https://github.com/geerlingguy/ansible-role-docker)
 * [Ansible Avahi Role](https://github.com/debops/ansible-avahi)
-* [OpenLDAP slapd Base Install Role](https://github.com/stuvusIT/slapd-base)
-* [OpenLDAP slapd Configuration Role](https://github.com/stuvusIT/slapd-config)
 * [AppArmor Configuration Role](https://github.com/manala/ansible-role-apparmor)
 * [Ansible Jenkins Role](https://github.com/emmetog/ansible-jenkins)
 
@@ -91,7 +88,7 @@ For local configurations [Avahi](https://www.avahi.org/) is used to add a dev.lo
 
 To replace the Linux Foundation identity system at https://identity.linuxfoundation.org/ we will instead use OpenLDAP. It might be possible (preferable?) to stick OpenLDAP inside a container, for now it will run directly on the dev host. On Ubuntu 18.04 the default configuration for OpenLDAP's `slapd` daemon uses AppArmor to limit where slapd can store databases (see `/etc/apparmor.d/usr.sbin.slapd`), by default in `/var/lib/ldap`, whereas the `slapd_mdb_dir` Ansible role variable wants to store the `mbd` database in `/var/lib/slapd`, we need to make sure to point it to '/var/lib/ldap'.
 
-The tutorial at https://www.digitalocean.com/community/tutorials/how-to-encrypt-openldap-connections-using-starttls is used as the basis of setting up self signed SSL certificates for `slapd`, a tricky subtlety is that you cannot set the TLS-related config entries `olcTLSCertificateKeyFile` and `olcTLSCertificateFile` independantly (you get a `implementation specific)error (80)` if you try to do so, as per https://github.com/ansible/ansible/issues/25665), unfortunately the `stuvusit.slapd-config` Ansible role does not have support for setting multiple config entries at once. There exists a pull request for a `ldap_attrs` Ansible module at https://github.com/ansible/ansible/pull/31664 but unfortunately it hasn't been accepted yet into an official Ansible release, so for now we use a workaround.
+The tutorials at https://www.digitalocean.com/community/tutorials/how-to-encrypt-openldap-connections-using-starttls and https://medium.com/@griggheo/notes-on-ldap-server-setup-and-client-authentication-546f51cbd6f4 as well as the [osixia/openldap Docker Container](https://github.com/osixia/docker-openldap) are used as the basis of setting up self signed SSL certificates for `slapd`, a tricky subtlety is that you cannot set the TLS-related config entries `olcTLSCertificateKeyFile` and `olcTLSCertificateFile` independantly (you get a `implementation specific)error (80)` if you try to do so, as per https://github.com/ansible/ansible/issues/25665). There exists a pull request for a `ldap_attrs` Ansible module at https://github.com/ansible/ansible/pull/31664 but unfortunately it hasn't been accepted yet into an official Ansible release, so for now we use the workaround in that pull request discussion.
 
 ## TLS Considerations
 
@@ -101,7 +98,7 @@ None of the OpenLDAP tutorials I tried to follow would result in a fully working
 
 ## Jenkins Configuration
 
-Jenkins will be configured via the Ansible role [emmetog.jenkins](https://github.com/emmetog/ansible-jenkins), which can
+Jenkins is configured via the Ansible role [emmetog.jenkins](https://github.com/emmetog/ansible-jenkins), which can
 configure a Jenkins server inside a Docker container (in which case it starts with the official Jenkins Docker Container).
 An introduction to this Ansible role can be found in this blog post, [How To Deploy Jenkins Completely Pre-Configured - Automating Jenkins](https://blog.nimbleci.com/2016/10/11/how-to-deploy-jenkins-completely-pre-configured/).
 
@@ -110,7 +107,7 @@ the final version including all plugin-specific settings.
 
 This two step process is also required to pass the `VIRTUAL_HOST` and `VIRTUAL_PORT` environment variables to the Jenkins container needed for the NGINX reverse proxy.
 
-We set the Security Realm to use the [ldap plugin](https://plugins.jenkins.io/ldap) and point it to the `ldap.local` CNAME. [Notes on LDAP server setup and client authentication](https://medium.com/@griggheo/notes-on-ldap-server-setup-and-client-authentication-546f51cbd6f4) has some very useful not on how to configure the LDAP plugin in Jenkins, in particular with regards to getting certificates to work for TLS / LDAPS.
+We set the Security Realm to use the [ldap plugin](https://plugins.jenkins.io/ldap) and point it to the `ldap.local` CNAME. [Notes on LDAP server setup and client authentication](https://medium.com/@griggheo/notes-on-ldap-server-setup-and-client-authentication-546f51cbd6f4) has some very useful info on how to configure the LDAP plugin in Jenkins, in particular with regards to getting certificates to work for TLS / LDAPS.
 
 
 # Building the Infrastructure
@@ -131,14 +128,20 @@ sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –stop
 sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –configure
 ```
 
-Also it appears that VMware Fusion 11 may conflict with Docker, potentially preventing VMs from starting, sometimes with an error message about "Too many virtual machines". If that happens, you may need to change Docker preferences to not start automatically on startup / login and reboot your machine.
+Also it appears that VMware Fusion 11.0.0 may conflict with Docker, potentially preventing VMs from starting, sometimes with an error message about "Too many virtual machines". If that happens, you may need to change Docker preferences to not start automatically on startup / login and reboot your machine. This issue is resolved in VMWare Fusion 11.0.1.
 
 If you want to test just the Ansible provisioning step (optionally starting at a specific task):
 ```
-ansible-playbook -i ansible/inventory ansible/playbook.yml  --connection paramiko --user MY_USER --extra-vars ansible_ssh_pass=MY_PASS --extra-vars ansible_become_pass=MY_PASS --extra-vars aswf_domain=MY_DOMAIN --start-at-task "TASK I AM DEBUGGING"
+ansible-playbook -i ansible/inventory ansible/playbook.yml  --connection paramiko --user MY_USER --extra-vars ansible_ssh_pass=MY_PASS --extra-vars ansible_become_pass=MY_PASS --extra-vars aswf_domain=MY_DOMAIN --start-at-task "TASK I AM DEBUGGING" -vvv
 ```
 
+If you want Ansible not to delete temporary scripts on the target host, you can set the environment variable:
 
+```
+export ANSIBLE_KEEP_REMOTE_FILES=1
+```
+
+before running `ansible-playbook` or `packer`.
 
 If everything worked well, once you restart the completed VM, you should be able to access the services at:
 
