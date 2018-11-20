@@ -44,13 +44,12 @@ brew install packer
 brew install ansible
 ```
 
-We also want to leverage [Ansible Galaxy](https://galaxy.ansible.com/) roles to help with Docker configuration:
+Currently using Packer 1.3.2 and Ansible 2.6.5 as well as [Ansible Galaxy](https://galaxy.ansible.com/) roles to help with Ubuntu and Docker container configuration:
 
 ```
 ansible-galaxy install geerlingguy.pip
 ansible-galaxy install geerlingguy.docker
 ansible-galaxy install debops.avahi
-ansible-galaxy install manala.apparmor
 ansible-galaxy install emmetog.jenkins
 ```
 
@@ -59,18 +58,17 @@ The GitHub source for these Ansible roles can be found respectively at:
 * [Ansible Python Pip Role](https://github.com/geerlingguy/ansible-role-pip)
 * [Ansible Python Docker Role](https://github.com/geerlingguy/ansible-role-docker)
 * [Ansible Avahi Role](https://github.com/debops/ansible-avahi)
-* [AppArmor Configuration Role](https://github.com/manala/ansible-role-apparmor)
 * [Ansible Jenkins Role](https://github.com/emmetog/ansible-jenkins)
 
 # Implementation Details
 
 The virtual machine host uses [Ubuntu Server 18.04.1 LTS](http://releases.ubuntu.com/18.04/). The Packer YAML config file is based on
-the [geerlingguy/ubuntu1804](https://github.com/geerlingguy/packer-ubuntu-1804) GitHub project. The Ubuntu 18.04 installer behaves
+the [geerlingguy/ubuntu1804](https://github.com/geerlingguy/packer-ubuntu-1804) GitHub project. The Ubuntu 18.04.1 installer behaves
 significantly differently depending on whether the VM environment is configred for BIOS or UEFI, the
 [boot_command](https://www.packer.io/docs/builders/vmware-iso.html#boot_command) virtual keystrokes passed to the Ubuntu installer via VNC by
 Packer will only work in a BIOS environment.
 
-Docker is then added to the VM using the Ansible Docker role, and Docker containers are created for the 3 vhosts (Jenkins, Nexus2 and Nexus3) as well as NGINX used to proxy / redirect access to the vhosts.
+Docker is then added to the VM using the Ansible Docker role, and Docker containers are created for the 4 vhosts (Jenkins, Nexus2, Nexus3, SonarQube) as well as NGINX used to proxy / redirect access to the vhosts.
 
 * [NGINX Proxy Docker Container](https://hub.docker.com/r/jwilder/nginx-proxy/)
 * [Jenkins Docker Container](https://hub.docker.com/r/jenkins/jenkins/)
@@ -86,7 +84,7 @@ For local configurations [Avahi](https://www.avahi.org/) is used to add a dev.lo
 
 ## LDAP Authentication
 
-To replace the Linux Foundation identity system at https://identity.linuxfoundation.org/ we will instead use OpenLDAP. It might be possible (preferable?) to stick OpenLDAP inside a container, for now it will run directly on the dev host. On Ubuntu 18.04 the default configuration for OpenLDAP's `slapd` daemon uses AppArmor to limit where slapd can store databases (see `/etc/apparmor.d/usr.sbin.slapd`), by default in `/var/lib/ldap`, whereas the `slapd_mdb_dir` Ansible role variable wants to store the `mbd` database in `/var/lib/slapd`, we need to make sure to point it to '/var/lib/ldap'.
+To replace the Linux Foundation identity system at https://identity.linuxfoundation.org/ we will instead use OpenLDAP. It might be possible (preferable?) to stick OpenLDAP inside a container, for now it will run directly on the dev host. On Ubuntu 18.04 the default configuration for OpenLDAP's `slapd` daemon uses AppArmor to limit where slapd can store databases (see `/etc/apparmor.d/usr.sbin.slapd`), by default in `/var/lib/ldap`, if you try to relocate it you will need to adjust AppArmor configuration accordingly.
 
 The tutorials at https://www.digitalocean.com/community/tutorials/how-to-encrypt-openldap-connections-using-starttls and https://medium.com/@griggheo/notes-on-ldap-server-setup-and-client-authentication-546f51cbd6f4 as well as the [osixia/openldap Docker Container](https://github.com/osixia/docker-openldap) are used as the basis of setting up self signed SSL certificates for `slapd`, a tricky subtlety is that you cannot set the TLS-related config entries `olcTLSCertificateKeyFile` and `olcTLSCertificateFile` independantly (you get a `implementation specific)error (80)` if you try to do so, as per https://github.com/ansible/ansible/issues/25665). There exists a pull request for a `ldap_attrs` Ansible module at https://github.com/ansible/ansible/pull/31664 but unfortunately it hasn't been accepted yet into an official Ansible release, so for now we use the workaround in that pull request discussion.
 

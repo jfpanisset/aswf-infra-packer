@@ -98,6 +98,7 @@
       - matrix-auth
       - matrix-project
       - ldap
+      - workflow-api
 
   roles:
     - role: debops.avahi
@@ -312,38 +313,6 @@
       groups: ssl-cert
       comment: "OpenLDAP Server Account"
       password_lock: yes
-
-  - name: missing AppArmor permissions for slapd
-    # OpenLDAP installation role won't be able to start slapd without some additional AppArmor permissions
-    # FIXME: is this still needed?
-    copy:
-      src: slapd.apparmor
-      dest: /etc/apparmor.d/local/usr.sbin.slapd
-
-  - name: restart AppArmor
-    service:
-      name:  apparmor
-      state: reloaded
-
-#  - name: install OpenLDAP slapd
-#    include_role:
-#      name: stuvusit.slapd-base
-#    vars:
-#      slapd_etc_dir: /etc/ldap
-#      slapd_mdb_dir: /var/lib/ldap
-#      slapd_olc_rootdn: cn=root,cn=config
-#      slapd_olc_rootdn_password: "{{ ansible_ssh_pass }}"
-
-  - name: slapd AppArmor attach_disconnected
-    lineinfile:
-      path: /etc/apparmor.d/usr.sbin.slapd
-      regexp: '^/usr/sbin/slapd (flags=\(attach_disconnected\) |)\{$'
-      line:   '/usr/sbin/slapd flags=(attach_disconnected) {'
-
-  - name: restart AppArmor
-    service:
-      name:  apparmor
-      state: reloaded
 
   - name: LDAP cert accessible for LDAP clients
     copy:
