@@ -38,7 +38,7 @@
           <filter>memberUid={1}</filter>
         </groupMembershipStrategy>
         <managerDN>cn=binduser,{{ aswf_ldap_domain }}</managerDN>
-        <managerPasswordSecret>{AQAAABAAAAAQ8drCztVcJWtR22vNA9JZIZyexWodTU2F/x04omBfdkc=}</managerPasswordSecret>
+        <managerPasswordSecret>{{ manager_password_secret }}</managerPasswordSecret>
         <displayNameAttributeName>displayName</displayNameAttributeName>
         <mailAddressAttributeName>mail</mailAddressAttributeName>
         <ignoreIfUnavailable>false</ignoreIfUnavailable>
@@ -97,7 +97,7 @@
           </default>
           <int>8</int>
           <string>GERRIT_URL</string>
-          <string>https://git.local/gerrit</string>
+          <string>https://git.{{ aswf_domain }}/gerrit</string>
           <string>GIT_CLONE_URL</string>
           <string>git@github.com:</string>
           <string>GIT_URL</string>
@@ -105,13 +105,13 @@
           <string>JENKINS_HOSTNAME</string>
           <string>jenkins</string>
           <string>LOGS_SERVER</string>
-          <string>https://logs.local</string>
+          <string>https://logs.{{ aswf_domain }}</string>
           <string>NEXUS_URL</string>
-          <string>https://nexus.local</string>
+          <string>https://nexus.{{ aswf_domain }}</string>
           <string>SILO</string>
           <string>production</string>
           <string>SONAR_URL</string>
-          <string>https://sonar.local</string>
+          <string>https://sonar.{{ aswf_domain }}</string>
         </tree-map>
       </envVars>
     </hudson.slaves.EnvironmentVariablesNodeProperty>

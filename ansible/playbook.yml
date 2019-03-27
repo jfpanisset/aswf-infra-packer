@@ -23,9 +23,6 @@
 
     aswf_ldap_domain: "dc={{ aswf_domain | regex_replace('\\.', ',dc=') }}"
 
-    pip_install_packages:
-      - name: docker
-      - name: python-ldap
     docker_users: ["{{ ansible_user }}"]
     avahi__alias_enabled: True
     
@@ -127,6 +124,22 @@
   - name: install required pip packages
     include_role:
       name: geerlingguy.pip
+    vars:
+      pip_install_packages:
+        - name: docker
+        - name: python-ldap
+
+  - name: install make sure pip3 is installed
+    include_role:
+      name: geerlingguy.pip
+    vars:
+      pip_package: python3-pip
+
+  - name: install required pip3 packages
+    # Somehow can't get geerlingguy.pip role to install both python2 and python3 packages, call pip role directly
+    pip:
+      name: jenkins-utils
+      executable: pip3
 
   - name: slapd debconf questions
     # These values are taken from the osixia/openldap container
@@ -543,7 +556,7 @@
 
   - name: create jobbuilder LDAP user
     # FIXME: what should its password be? Can set it with:
-    # ldappasswd -H ldapi:/// -x -D cn=admin,{{ aswf_ldap_domain }} -w LDAP_ROOT_PW -Z -S "cn=binduser,{{ aswf_ldap_domain }}"
+    # ldappasswd -H ldapi:/// -x -D cn=admin,{{ aswf_ldap_domain }} -w LDAP_ROOT_PW -Z -S "cn=jobbuilder,{{ aswf_ldap_domain }}"
     # FIXME: what should we be using for email addresses?
     ldap_entry:
       bind_dn: cn=admin,{{ aswf_ldap_domain }}
@@ -633,6 +646,16 @@
     docker_container:
       name: "{{ jenkins_docker_container_name }}"
       state: stopped
+
+  - name: encrypt Jenkins LDAP user password
+    script: jenkins_password_crypt.py "{{ ansible_ssh_pass }}"
+    args:
+      executable: python3
+    register: jenkins_encrypt_out
+
+  - name: capture encrypted Jenkins LDAP user password debug
+    set_fact:
+      manager_password_secret: "{{ jenkins_encrypt_out.stdout | trim }}"
 
   - name: recopy Jenkins config that depends on plugins being present
     template:
