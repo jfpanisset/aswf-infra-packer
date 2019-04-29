@@ -16,8 +16,8 @@ The official ASWF infrastructure is hosted at [VEXXHOST](http://vexxhost.com), a
 
 * [Jenkins CI/CD Server (production)](https://jenkins.aswf.io)
 * [Jenkins CI/CD Server (sandbox)](https://jenkins.aswf.io/sandbox)
-* [Nexus2 Artifact Repository (used to store log files)](https://nexus.aswf.io)
-* [Nexus3 Artifact Repository (used to store build artifacts)](https://nexus3.aswf.io)
+* [Nexus2 Artifact Repository (used to store Maven and Java based artifacts)](https://nexus.aswf.io)
+* [Nexus3 Artifact Repository (used to store Docker images)](https://nexus3.aswf.io)
 * [SonarQube Code Quality Analysis Server](https://sonar.aswf.io)
 
 Additional hosted SaaS components:
