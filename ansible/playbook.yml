@@ -647,16 +647,6 @@
       name: "{{ jenkins_docker_container_name }}"
       state: stopped
 
-  - name: encrypt Jenkins LDAP user password
-    script: jenkins_password_crypt.py "{{ ansible_ssh_pass }}"
-    args:
-      executable: python3
-    register: jenkins_encrypt_out
-
-  - name: capture encrypted Jenkins LDAP user password debug
-    set_fact:
-      manager_password_secret: "{{ jenkins_encrypt_out.stdout | trim }}"
-
   - name: recopy Jenkins config that depends on plugins being present
     template:
       src: "{{ jenkins_source_dir_configs }}/config.xml.j2"
@@ -692,6 +682,36 @@
         nexus3.panisset.io:  172.17.0.1
         dev.panisset.io:  172.17.0.1
         ldap.panisset.io: 172.17.0.1
+
+  - name: wait for Jenkins hudson secret to be generated
+    wait_for:
+      path: "{{ jenkins_home }}/secrets/hudson.util.Secret"
+
+  - name: stop Jenkins container again
+    docker_container:
+      name: "{{ jenkins_docker_container_name }}"
+      state: stopped
+
+  - name: encrypt Jenkins LDAP user password
+    script: jenkins_password_crypt.py "{{ ansible_ssh_pass }}"
+    args:
+      executable: python3
+    register: jenkins_encrypt_out
+
+  - name: capture encrypted Jenkins LDAP user password debug
+    set_fact:
+      manager_password_secret: "{{ jenkins_encrypt_out.stdout | trim }}"
+
+  - name: add LDAP user password to Jenkins config
+    lineinfile:
+      path: "{{ jenkins_home }}/config.xml"
+      regexp: '^\s*<managerPasswordSecret>.*</managerPasswordSecret>$'
+      line:   '        <managerPasswordSecret>{{ manager_password_secret }}</managerPasswordSecret>'
+
+  - name: start Jenkins container for good with password binduser password
+    docker_container:
+      name: "{{ jenkins_docker_container_name }}"
+      state: started
 
   - name: add Nexus2 container
     docker_container:

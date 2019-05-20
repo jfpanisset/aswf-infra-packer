@@ -44,18 +44,19 @@ tested under macOS 10.14.1, and with VMWare Fusion 11.0.1.
 
 Once Homebrew is installed, at a minimum you will need:
 
-```
+```bash
 brew install packer
 brew install ansible
 ```
 
 Currently using Packer 1.3.2 and Ansible 2.6.5 as well as [Ansible Galaxy](https://galaxy.ansible.com/) roles to help with Ubuntu and Docker container configuration:
 
-```
+```bash
 ansible-galaxy install geerlingguy.pip
 ansible-galaxy install geerlingguy.docker
 ansible-galaxy install debops.avahi
 ansible-galaxy install emmetog.jenkins
+ansible-galazy install ansible-thoteam.nexus3-oss
 ```
 
 The GitHub source for these Ansible roles can be found respectively at:
@@ -108,9 +109,14 @@ An introduction to this Ansible role can be found in this blog post, [How To Dep
 Although this role can build a container with a working Jenkins server, provisioned with plugins and a `config.xml` configuration file, it does not allow for fine grained configuration of Jenkins features. Instead it relies on interactive configuration using the Jenkins web GUI, harvesting of the XML configuration files (typically saved in the Jenkins home directory) and reintegration of these in the Ansible source directory. Since the Jenkins server will be started with your `config.xml` config file before specific plugins are loaded, you may not be able to fully pre-configure `config.xml`, since some plugin-specifc settings (especially related to security and authentication) can prevent Jenkins from starting when the corresponding plugins are not already loaded. The workaround is to maintain two `config.xml` files, one for the initial build of the container, to be subsequently replaced by
 the final version including all plugin-specific settings.
 
-This two step process is also required to pass the `VIRTUAL_HOST` and `VIRTUAL_PORT` environment variables to the Jenkins container needed for the NGINX reverse proxy.
+Unfortunately that's not even sufficient: the initial Jenkins startup without a complete configuration will not generate the file `secrets/hudson.util.Secret`
+which will be required to encrypt the manager password in `config.xml`, so we will need to restart Jenkins twice. This multi-step process is also required to pass the `VIRTUAL_HOST` and `VIRTUAL_PORT` environment variables to the Jenkins container needed for the NGINX reverse proxy.
 
 We set the Security Realm to use the [ldap plugin](https://plugins.jenkins.io/ldap) and point it to the `ldap.local` CNAME. [Notes on LDAP server setup and client authentication](https://medium.com/@griggheo/notes-on-ldap-server-setup-and-client-authentication-546f51cbd6f4) has some very useful info on how to configure the LDAP plugin in Jenkins, in particular with regards to getting certificates to work for TLS / LDAPS. We use the [jenkins-utils](https://github.com/tarvitz/jenkins-utils) Python module (which is Python 3 specific, and is installed via `pip3`) to encrypt the LDAP bind user password to be stored it in the `config.xml` Jenkins master configuration file.
+
+### Nexus 3 Configuration
+
+Nexus 3 is configured via the Ansible role [ansible-thoteam.nexus3-oss](https://github.com/ansible-ThoTeam/nexus3-oss) which appears to be the currently most popular, under active development Ansible role for managing Nexus 3, having taken over from `savoirfairelinux.ansible-nexus3-oss` when development ceased on that role.
 
 ## Building the Infrastructure
 
@@ -127,9 +133,9 @@ If you are debugging and don't want to lose the VM you are building on an error,
 If the Ubuntu boot process gets stuck at the DHCP stage, you may need to restart VMWare Fusion networking:
 
 ```bash
-sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –start
-sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –stop
-sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli –configure
+sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli --configure
+sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli --stop
+sudo /Applications/VMware\ Fusion.app/Contents/Library/vmnet-cli --start
 ```
 
 Also it appears that VMware Fusion 11.0.0 may conflict with Docker, potentially preventing VMs from starting, sometimes with an error message about "Too many virtual machines". If that happens, you may need to change Docker preferences to not start automatically on startup / login and reboot your machine. This issue is resolved in VMWare Fusion 11.0.1.
